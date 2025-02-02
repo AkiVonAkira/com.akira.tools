@@ -1,3 +1,65 @@
+## [1.4.5](https://github.com/AkiVonAkira/com.akira.tools/compare/v1.4.4...v1.4.5) (2025-01-29)
+
+
+### Bug Fixes
+
+* switch case ([4d975c4](https://github.com/AkiVonAkira/com.akira.tools/commit/4d975c42c22054531587adaace2a66b708d46c81))
+
+## [1.4.4](https://github.com/AkiVonAkira/com.akira.tools/compare/v1.4.3...v1.4.4) (2025-01-28)
+
+
+### Bug Fixes
+
+* ignore DefaultAsset type ([da368f2](https://github.com/AkiVonAkira/com.akira.tools/commit/da368f247a6ea2defa31f41a4deaa66c316d2ba6))
+
+## [1.4.3](https://github.com/AkiVonAkira/com.akira.tools/compare/v1.4.2...v1.4.3) (2025-01-28)
+
+
+### Bug Fixes
+
+* auto asset prefix skips files not in Assets/_Project ([cc54b8a](https://github.com/AkiVonAkira/com.akira.tools/commit/cc54b8a4e4d505b308c4db533870222b3a746bb8))
+
+## [1.4.2](https://github.com/AkiVonAkira/com.akira.tools/compare/v1.4.1...v1.4.2) (2025-01-27)
+
+
+### Bug Fixes
+
+* replace obsolete find objects of type ([2f01b4f](https://github.com/AkiVonAkira/com.akira.tools/commit/2f01b4f5183beb5ccd53d9ecde78ab6a4f508a3a))
+
+## [1.4.1](https://github.com/AkiVonAkira/com.akira.tools/compare/v1.4.0...v1.4.1) (2025-01-27)
+
+
+### Bug Fixes
+
+* refactor auto asset prefix ([16a8431](https://github.com/AkiVonAkira/com.akira.tools/commit/16a8431425b14d7bf41589d90aa4794781df718c))
+
+# [1.4.0](https://github.com/AkiVonAkira/com.akira.tools/compare/v1.3.9...v1.4.0) (2025-01-27)
+
+
+### Bug Fixes
+
+* format code ([4c0683a](https://github.com/AkiVonAkira/com.akira.tools/commit/4c0683afb85f8556339eb1725ac04caef950ff04))
+* move log error out of loop ([0575b91](https://github.com/AkiVonAkira/com.akira.tools/commit/0575b9120a44b778605f68969db5f8169da8cd08))
+
+
+### Features
+
+* Find Hidden Objects ([488f42d](https://github.com/AkiVonAkira/com.akira.tools/commit/488f42d6502786428f5809a7b3356e7c26342713))
+
+## [1.3.9](https://github.com/AkiVonAkira/com.akira.tools/compare/v1.3.8...v1.3.9) (2025-01-27)
+
+
+### Bug Fixes
+
+* ignore .cs files ([4a27678](https://github.com/AkiVonAkira/com.akira.tools/commit/4a276789495759ccc6b142bcbd3bfb47c799a982))
+
+## [1.3.8](https://github.com/AkiVonAkira/com.akira.tools/compare/v1.3.7...v1.3.8) (2025-01-27)
+
+
+### Bug Fixes
+
+* move #if unity editor to wrap the whole files ([4b3116c](https://github.com/AkiVonAkira/com.akira.tools/commit/4b3116cf9f038b9b5ca73716bf53d5ec20039b28))
+
 ## [1.3.7](https://github.com/AkiVonAkira/com.akira.tools/compare/v1.3.6...v1.3.7) (2025-01-24)
 
 

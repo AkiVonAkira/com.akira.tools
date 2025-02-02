@@ -1,10 +1,9 @@
-﻿using System.IO;
+﻿#if UNITY_EDITOR
+using System.IO;
 using System.Net.Http;
 using System.Threading.Tasks;
 using UnityEngine;
-# if UNITY_EDITOR
 using UnityEditor;
-# endif
 
 namespace akira
 {
@@ -67,3 +66,4 @@ namespace akira
         }
     }
 }
+#endif

@@ -18,7 +18,8 @@ using UnityEngine;
         {
             get
             {
-                if (_instance == null) Debug.LogError("Instance of " + typeof(T).Name + " is null");
+                if (_instance == null)
+                    Debug.LogError("Instance of " + typeof(T).Name + " is null");
 
                 return _instance;
             }
@@ -28,7 +29,13 @@ using UnityEngine;
 
         protected virtual void Awake()
         {
-            _instance = this as T;
+            if (Instance != null && Instance != this)
+            {
+                Destroy(gameObject);
+                return;
+            }
+
+            Instance = this as T;
         }
 
         protected void OnApplicationQuit()

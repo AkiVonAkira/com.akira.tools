@@ -1,10 +1,9 @@
+#if UNITY_EDITOR
 using System.IO;
 using akira;
 using UnityEngine;
 using UnityEngine.UIElements;
-# if UNITY_EDITOR
 using UnityEditor;
-# endif
 
 public class NamespaceInputPopup : EditorWindow
 {
@@ -59,3 +58,4 @@ public class NamespaceInputPopup : EditorWindow
         Debug.Log("Singleton imported successfully!");
     }
 }
+#endif

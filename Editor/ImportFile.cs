@@ -1,7 +1,6 @@
 ﻿using System.IO;
-# if UNITY_EDITOR
+#if UNITY_EDITOR
 using UnityEditor;
-# endif
 
 namespace akira
 {
@@ -22,3 +21,4 @@ namespace akira
         }
     }
 }
+#endif
