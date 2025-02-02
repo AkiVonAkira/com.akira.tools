@@ -1,3 +1,15 @@
+# [1.5.0](https://github.com/AkiVonAkira/com.akira.tools/compare/v1.4.5...v1.5.0) (2025-02-02)
+
+
+### Bug Fixes
+
+* update gh action ([e26904c](https://github.com/AkiVonAkira/com.akira.tools/commit/e26904cc827ff68fe6e598c461758ddaf782a694))
+
+
+### Features
+
+* Merge pull request [#1](https://github.com/AkiVonAkira/com.akira.tools/issues/1) from Oskar-Norberg/add-function-based-folder-structure ([cc9e3eb](https://github.com/AkiVonAkira/com.akira.tools/commit/cc9e3eb5c2ce3745a016cf3968709a4a05384673))
+
 ## [1.4.5](https://github.com/AkiVonAkira/com.akira.tools/compare/v1.4.4...v1.4.5) (2025-01-29)
 
 
