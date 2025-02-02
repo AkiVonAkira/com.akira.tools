@@ -1,5 +1,6 @@
 #if UNITY_EDITOR
 using System.IO;
+using ringo;
 using UnityEngine;
 using static UnityEditor.AssetDatabase;
 using UnityEditor;
@@ -8,11 +9,13 @@ namespace akira
 {
     public static class ToolsMenu
     {
-        [MenuItem("Tools/Setup/Create Default Folders")]
-        public static void CreateDefaultFolders()
+        private const string RootFolder = "_Project";
+        
+        [MenuItem("Tools/Setup/Folders/Type-Based")]
+        public static void CreateTypeBasedDefaultFolders()
         {
             Folders.CreateDirectories(
-                "_Project",
+                RootFolder,
                 "_Scripts>Controllers",
                 "_Scripts>Editor",
                 "_Scripts>Interfaces",
@@ -43,6 +46,56 @@ namespace akira
                 "Scenes>Temporary Scenes",
                 "Sprites>UI"
             );
+            Refresh();
+        }
+        
+        [MenuItem("Tools/Setup/Folders/Function-Based")]
+        public static void CreateFunctionBasedDefaultFolders()
+        {
+            Folders.CreateDirectories(
+                RootFolder,
+
+                "_Dev>FirstnameLastname",
+                "_Dev>_Lost&Found",
+
+                "_Scripts>Controllers",
+                "_Scripts>Editor",
+                "_Scripts>Interfaces",
+                "_Scripts>Managers",
+                "_Scripts>Objects",
+                "_Scripts>Scriptables",
+                "_Scripts>Spawners",
+                "_Scripts>States",
+                "_Scripts>Systems",
+                "_Scripts>UI",
+                "_Scripts>Units",
+                "_Scripts>Utilities",
+
+                "Gameplay>Triggers", 
+                "Gameplay>Interactibles", 
+                "Gameplay>Pickups", 
+                "Gameplay>Obstacles", 
+
+                "Audio>Music",
+                "Audio>SFX",
+
+                "Levels", 
+
+                "UI>Fonts",
+
+                "Resources"
+            );
+            
+            WorldObjectFolders.Create(
+                RootFolder, 
+                "Objects>Architecture>[ArchitectureName]", 
+                "Objects>Props>[PropName]", 
+                "Characters>[CharacterName]", 
+                "Enemies>[EnemyName]", 
+                "VFX>[VFXName]",
+                "Player"
+                );
+            
             Refresh();
         }
 
