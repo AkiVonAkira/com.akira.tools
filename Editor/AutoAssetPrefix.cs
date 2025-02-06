@@ -5,6 +5,7 @@ using System.Linq;
 using UnityEngine;
 using Object = UnityEngine.Object;
 using UnityEditor;
+using System.IO; 
 
 namespace akira
 {
@@ -46,7 +47,12 @@ namespace akira
         #endregion
 
         private static readonly HashSet<string> LoggedErrors = new();
-
+        private static readonly HashSet<string> SubstanceFolders = new();
+        private static readonly string[] AdobeSubstancePaths = 
+        {
+            "Assets/Adobe/Substance3DForUnity"
+        };
+        
         static void OnPostprocessAllAssets(
             string[] importedAssets,
             string[] deletedAssets,
@@ -54,45 +60,106 @@ namespace akira
             string[] movedFromAssetPaths
         )
         {
+            // Collect folders containing SubstanceGraphSO assets
             foreach (string assetPath in importedAssets)
             {
-                if (!assetPath.StartsWith("Assets/_Project"))
+                var asset = AssetDatabase.LoadAssetAtPath<Object>(assetPath);
+                if (IsSubstanceGraphSOType(asset))
                 {
-                    continue;
-                }
-
-                if (assetPath.EndsWith(".cs"))
-                {
-                    continue;
-                }
-
-                var assetType = GetAssetType(assetPath);
-                if (assetType == null)
-                {
-                    continue;
-                }
-
-                var splitFilePath = assetPath.Split('/');
-                var splitFileName = splitFilePath.Last().Split('.');
-                var fileNameWithoutExtension = splitFileName.First();
-                var fileExtension = splitFileName.Last();
-
-                var newName = GetNewName(fileNameWithoutExtension, fileExtension, assetType);
-                if (!string.IsNullOrEmpty(newName))
-                {
-                    AssetDatabase.RenameAsset(assetPath, newName);
-                    AssetDatabase.Refresh();
-
-                    // Update the main object name to match the new filename
-                    var newAssetPath =
-                        $"{string.Join("/", splitFilePath.Take(splitFilePath.Length - 1))}/{newName}";
-                    var asset = AssetDatabase.LoadAssetAtPath<Object>(newAssetPath);
-                    if (asset == null) continue;
-                    asset.name = newName.Split('/').Last().Split('.').First();
-                    EditorUtility.SetDirty(asset);
+                    var folder = Path.GetDirectoryName(assetPath)?.Replace("\\", "/");
+                    SubstanceFolders.Add(folder);
                 }
             }
+
+            // Log the collected folders
+            Debug.Log($"Substance folders: {string.Join(", ", SubstanceFolders)}");
+
+            // Process assets, skipping those in SubstanceGraphSO folders
+            foreach (string assetPath in importedAssets)
+            {
+                var normalizedAssetPath = assetPath.Replace("\\", "/");
+                if (SubstanceFolders.Any(folder => normalizedAssetPath.StartsWith(folder)))
+                {
+                    Debug.Log($"Skipping asset: {assetPath} as it is in a SubstanceGraphSO folder.");
+                    continue;
+                }
+
+                ProcessAsset(assetPath);
+            }
         }
+            
+        private static void ProcessAsset(string assetPath)
+        {
+            if (IsAdobeSubstanceAsset(assetPath) || IsAdobeSubstanceImporter(assetPath))
+                return;
+            
+            if (!assetPath.StartsWith("Assets/_Project"))
+                return;
+
+            if (assetPath.EndsWith(".cs"))
+                return;
+            
+            var oldAsset = AssetDatabase.LoadAssetAtPath<Object>(assetPath);
+            if (oldAsset == null || IsSubstanceGraphSOType(oldAsset) || IsAdobeModifiedAsset(oldAsset))
+                return;
+            
+            var assetType = GetAssetType(assetPath);
+            if (assetType == null)
+                return;
+
+            var splitFilePath = assetPath.Split('/');
+            var splitFileName = splitFilePath.Last().Split('.');
+            var fileNameWithoutExtension = splitFileName.First();
+            var fileExtension = splitFileName.Last();
+
+            var newName = GetNewName(fileNameWithoutExtension, fileExtension, assetType);
+            if (!string.IsNullOrEmpty(newName))
+            {
+                AssetDatabase.RenameAsset(assetPath, newName);
+                AssetDatabase.Refresh();
+
+                // Update the main object name to match the new filename
+                var newAssetPath =
+                    $"{string.Join("/", splitFilePath.Take(splitFilePath.Length - 1))}/{newName}";
+                var asset = AssetDatabase.LoadAssetAtPath<Object>(newAssetPath);
+                if (asset == null) return;
+                asset.name = newName.Split('/').Last().Split('.').First();
+                EditorUtility.SetDirty(asset);
+                LogErrorOnce($"Renamed asset: {assetPath} to {newName}");
+            }
+        }
+
+        #region Adobe Substance Importer Specific Checks
+        private static bool IsAdobeSubstanceAsset(string assetPath)
+        {
+            return AdobeSubstancePaths.Any(adobePath => assetPath.StartsWith(adobePath));
+        }
+
+        private static bool IsAdobeSubstanceImporter(string assetPath)
+        {
+            var importer = AssetImporter.GetAtPath(assetPath);
+            return importer != null && importer.GetType().ToString().Contains("Adobe.SubstanceEditor.Importer");
+        }
+        
+        private static bool IsSubstanceGraphSOType(Object asset)
+        {
+            return asset is ScriptableObject scriptableObject && scriptableObject.GetType().FullName == "Adobe.Substance.SubstanceGraphSO";
+        }
+        
+        private static bool IsAdobeModifiedAsset(Object asset)
+        {
+            // Check for specific metadata or properties that indicate the asset was modified by Adobe
+            if (asset is Material material)
+            {
+                return material.shader.name.Contains("graph_0");
+            }
+            if (asset is Texture2D texture)
+            {
+                return texture.name.Contains("graph_0");
+            }
+            return false;
+        }
+        #endregion
 
         private static Type GetAssetType(string assetPath)
         {
