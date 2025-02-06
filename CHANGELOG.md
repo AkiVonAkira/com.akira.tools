@@ -1,3 +1,10 @@
+## [1.6.1](https://github.com/AkiVonAkira/com.akira.tools/compare/v1.6.0...v1.6.1) (2025-02-06)
+
+
+### Bug Fixes
+
+* comment out manifest override ([4cdbcd4](https://github.com/AkiVonAkira/com.akira.tools/commit/4cdbcd4a7c2c1e9468f274b9ed4841147c86a165))
+
 # [1.6.0](https://github.com/AkiVonAkira/com.akira.tools/compare/v1.5.0...v1.6.0) (2025-02-06)
 
 
