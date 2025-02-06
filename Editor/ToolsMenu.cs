@@ -99,12 +99,12 @@ namespace akira
             Refresh();
         }
 
-        [MenuItem("Tools/Setup/Load New Manifest")]
-        static async void LoadNewManifest()
-        {
-            await Packages.ReplacePackageFromGist("7b3e5fd1f6bd7d18fd23b382765b938b");
-            Debug.Log("Loaded new manifest successfully!");
-        }
+        // [MenuItem("Tools/Setup/Load New Manifest (2D)")]
+        // static async void LoadNewManifest()
+        // {
+        //     await Packages.ReplacePackageFromGist("7b3e5fd1f6bd7d18fd23b382765b938b");
+        //     Debug.Log("Loaded new manifest successfully!");
+        // }
 
         [MenuItem("Tools/Setup/Packages/New Input System")]
         static async void AddNewInputSystem()
