@@ -1,3 +1,10 @@
+# [1.6.0](https://github.com/AkiVonAkira/com.akira.tools/compare/v1.5.0...v1.6.0) (2025-02-06)
+
+
+### Features
+
+* Allow .sbsar files to be imported if you have the adobe package ([ef06f3a](https://github.com/AkiVonAkira/com.akira.tools/commit/ef06f3a83b4568352952cf6632dc4ae8c866db02))
+
 # [1.5.0](https://github.com/AkiVonAkira/com.akira.tools/compare/v1.4.5...v1.5.0) (2025-02-02)
 
 
