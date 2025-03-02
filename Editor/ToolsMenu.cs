@@ -1,133 +1,75 @@
 #if UNITY_EDITOR
-using System.IO;
-using ringo;
-using UnityEngine;
-using static UnityEditor.AssetDatabase;
+using System;
+using akira.Folders;
+using akira.Packages;
 using UnityEditor;
+using UnityEngine;
+//using akira.Assets;
 
 namespace akira
 {
     public static class ToolsMenu
     {
         private const string RootFolder = "_Project";
-        
+
         [MenuItem("Tools/Setup/Folders/Type-Based")]
         public static void CreateTypeBasedDefaultFolders()
         {
-            Folders.CreateDirectories(
-                RootFolder,
-                "_Scripts>Controllers",
-                "_Scripts>Editor",
-                "_Scripts>Interfaces",
-                "_Scripts>Managers",
-                "_Scripts>Objects",
-                "_Scripts>Scriptables",
-                "_Scripts>Spawners",
-                "_Scripts>States",
-                "_Scripts>Systems",
-                "_Scripts>UI",
-                "_Scripts>Units",
-                "_Scripts>Utilities",
-                "Animations",
-                "Audio>Music",
-                "Editor>Icons",
-                "Materials>Shaders",
-                "Materials>Terrain",
-                "Models>FBX",
-                "Prefabs>Enemies",
-                "Prefabs>Player",
-                "Prefabs>Props",
-                "Prefabs>UI Prefabs",
-                "Prefabs>VFX",
-                "Resources>Fonts",
-                "Resources>Scriptable Objects",
-                "Resources>Shaders",
-                "Scenes>Templates",
-                "Scenes>Temporary Scenes",
-                "Sprites>UI"
-            );
-            Refresh();
+            try
+            {
+                // Create base function folders
+                FolderHelpers.CreateFolders(RootFolder, FolderStructures.DefaultStructures["Type"]);
+
+                // Cleanup default folders
+                FolderHelpers.CleanupDefaultFolders();
+                Debug.Log("Type-based folder structure created successfully");
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"Error creating folders: {e.Message}");
+            }
         }
-        
+
         [MenuItem("Tools/Setup/Folders/Function-Based")]
         public static void CreateFunctionBasedDefaultFolders()
         {
-            Folders.CreateDirectories(
-                RootFolder,
+            try
+            {
+                // Create base function folders
+                FolderHelpers.CreateFolders(RootFolder, FolderStructures.DefaultStructures["Function"]);
 
-                "_Dev>FirstnameLastname",
-                "_Dev>_Lost&Found",
-
-                "_Scripts>Controllers",
-                "_Scripts>Editor",
-                "_Scripts>Interfaces",
-                "_Scripts>Managers",
-                "_Scripts>Objects",
-                "_Scripts>Scriptables",
-                "_Scripts>Spawners",
-                "_Scripts>States",
-                "_Scripts>Systems",
-                "_Scripts>UI",
-                "_Scripts>Units",
-                "_Scripts>Utilities",
-
-                "Gameplay>Triggers", 
-                "Gameplay>Interactibles", 
-                "Gameplay>Pickups", 
-                "Gameplay>Obstacles", 
-
-                "Audio>Music",
-                "Audio>SFX",
-
-                "Levels", 
-
-                "UI>Fonts",
-
-                "Resources"
-            );
-            
-            WorldObjectFolders.Create(
-                RootFolder, 
-                "Objects>Architecture>[ArchitectureName]", 
-                "Objects>Props>[PropName]", 
-                "Characters>[CharacterName]", 
-                "Enemies>[EnemyName]", 
-                "VFX>[VFXName]",
-                "Player"
-                );
-            
-            Refresh();
+                // Cleanup default folders
+                FolderHelpers.CleanupDefaultFolders();
+                Debug.Log("Function-based folder structure created successfully");
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"Error creating folders: {e.Message}");
+            }
         }
 
-        // [MenuItem("Tools/Setup/Load New Manifest (2D)")]
-        // static async void LoadNewManifest()
-        // {
-        //     await Packages.ReplacePackageFromGist("7b3e5fd1f6bd7d18fd23b382765b938b");
-        //     Debug.Log("Loaded new manifest successfully!");
-        // }
-
-        [MenuItem("Tools/Setup/Packages/New Input System")]
-        static async void AddNewInputSystem()
+        [MenuItem("Tools/Setup/Packages/Essential")]
+        public static async void InstallEssentialPackages()
         {
-            bool success = await Packages.InstallUnityPackage("com.unity.inputsystem");
-            if (success)
-                Debug.Log("New Input System package installed successfully.");
+            string[] packages =
+            {
+                "com.unity.cinemachine", "com.unity.postprocessing", "com.unity.2d.animation",
+                "git+https://github.com/adammyhre/Unity-Utils.git",
+                "git+https://github.com/adammyhre/Unity-Improved-Timers.git",
+                // keep InputSystem last because it requires a restart
+                "com.unity.inputsystem"
+            };
+
+            await PackageManager.InstallPackages(packages);
         }
 
-        [MenuItem("Tools/Setup/Packages/Post Processing")]
-        static async void AddPostProcessing()
-        {
-            bool success = await Packages.InstallUnityPackage("com.unity.postprocessing");
-            if (success)
-                Debug.Log("Post Processing package installed successfully.");
-        }
 
-        [MenuItem("Tools/Setup/Packages/Cinemachine")]
-        static async void AddCinemachine()
+        [MenuItem("Tools/Setup/Disable Domain Reload")]
+        public static void DisableDomainReload()
         {
-            bool success = await Packages.InstallUnityPackage("com.unity.cinemachine");
-            if (success)
-                Debug.Log("Cinemachine package installed successfully.");
+            EditorSettings.enterPlayModeOptions =
+                EnterPlayModeOptions.DisableDomainReload | EnterPlayModeOptions.DisableSceneReload;
+            Debug.Log("Domain reload disabled.");
         }
     }
 }

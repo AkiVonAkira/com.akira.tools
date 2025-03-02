@@ -10,10 +10,11 @@
     "email": "akivonakira@gmail.com",
     "url": "https://github.com/AkiVonAkira"
   },
-  "dependencies": {},
   "keywords": [
+    "unity",
     "tools",
-    "utility",
-    "editor"
-  ]
+    "folder-creation",
+    "package-management"
+  ],
+  "license": "MIT"
 }

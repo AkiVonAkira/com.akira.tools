@@ -1,120 +1,114 @@
 #if UNITY_EDITOR
-using UnityEditor;
-using UnityEngine;
-using UnityEditor.SceneManagement;
 using System.Collections.Generic;
+using UnityEditor;
+using UnityEditor.SceneManagement;
+using UnityEngine;
 
-public class HiddenGameObjectTools : EditorWindow
+namespace akira
 {
-    #region Menu Command
-
-    [MenuItem("Tools/Hidden GameObject Tools")]
-    public static void ShowWindow()
+    public class HiddenGameObjectTools : EditorWindow
     {
-        var window = GetWindow<HiddenGameObjectTools>();
-        window.titleContent = new GUIContent("Hidden GOs");
-        window.GatherHiddenObjects();
-    }
+        #region Menu Command
 
-    #endregion
-
-    #region GUI
-
-    private static readonly GUILayoutOption ButtonWidth = GUILayout.Width(80);
-    private static readonly GUILayoutOption BigButtonHeight = GUILayout.Height(35);
-
-    private void OnGUI()
-    {
-        GUILayout.Space(10f);
-        GUILayout.BeginHorizontal();
+        [MenuItem("Tools/Hidden GameObject Tools")]
+        public static void ShowWindow()
         {
-            if (GUILayout.Button("Refresh", BigButtonHeight))
-            {
-                GatherHiddenObjects();
-            }
-
-            if (GUILayout.Button("Test", BigButtonHeight, ButtonWidth))
-            {
-                var go = new GameObject("HiddenTestObject");
-                go.hideFlags = HideFlags.HideInHierarchy;
-                GatherHiddenObjects();
-            }
+            var window = GetWindow<HiddenGameObjectTools>();
+            window.titleContent = new GUIContent("Hidden GOs");
+            window.GatherHiddenObjects();
         }
-        GUILayout.EndHorizontal();
-        GUILayout.Space(10f);
 
-        EditorGUILayout.LabelField(
-            $"Hidden Objects ({HiddenObjects.Count})",
-            EditorStyles.boldLabel
-        );
-        for (int i = 0; i < HiddenObjects.Count; i++)
+        #endregion
+
+        #region GUI
+
+        private static readonly GUILayoutOption ButtonWidth = GUILayout.Width(80);
+        private static readonly GUILayoutOption BigButtonHeight = GUILayout.Height(35);
+
+        private void OnGUI()
         {
-            var hiddenObject = HiddenObjects[i];
-
+            GUILayout.Space(10f);
             GUILayout.BeginHorizontal();
             {
-                var gone = hiddenObject == null;
+                if (GUILayout.Button("Refresh", BigButtonHeight)) GatherHiddenObjects();
 
-                GUILayout.Label(gone ? "null" : hiddenObject.name);
-                GUILayout.FlexibleSpace();
-
-                if (gone)
+                if (GUILayout.Button("Test", BigButtonHeight, ButtonWidth))
                 {
-                    GUILayout.Box("Select", ButtonWidth);
-                    GUILayout.Box("Reveal", ButtonWidth);
-                    GUILayout.Box("Delete", ButtonWidth);
-                }
-                else
-                {
-                    if (GUILayout.Button("Select", ButtonWidth))
-                    {
-                        Selection.activeGameObject = hiddenObject;
-                    }
-
-                    if (GUILayout.Button(IsHidden(hiddenObject) ? "Reveal" : "Hide", ButtonWidth))
-                    {
-                        hiddenObject.hideFlags ^= HideFlags.HideInHierarchy;
-                        EditorSceneManager.MarkSceneDirty(hiddenObject.scene);
-                    }
-
-                    if (GUILayout.Button("Delete", ButtonWidth))
-                    {
-                        var scene = hiddenObject.scene;
-                        DestroyImmediate(hiddenObject);
-                        EditorSceneManager.MarkSceneDirty(scene);
-                    }
+                    var go = new GameObject("HiddenTestObject");
+                    go.hideFlags = HideFlags.HideInHierarchy;
+                    GatherHiddenObjects();
                 }
             }
             GUILayout.EndHorizontal();
-        }
-    }
+            GUILayout.Space(10f);
 
-    #endregion
-
-    #region Hidden Objects
-
-    private List<GameObject> HiddenObjects = new();
-
-    private void GatherHiddenObjects()
-    {
-        HiddenObjects.Clear();
-        var allObjects = FindObjectsByType<GameObject>(FindObjectsSortMode.None);
-        foreach (var go in allObjects)
-        {
-            if ((go.hideFlags & HideFlags.HideInHierarchy) != 0)
+            EditorGUILayout.LabelField(
+                $"Hidden Objects ({HiddenObjects.Count})",
+                EditorStyles.boldLabel
+            );
+            for (var i = 0; i < HiddenObjects.Count; i++)
             {
-                HiddenObjects.Add(go);
+                var hiddenObject = HiddenObjects[i];
+
+                GUILayout.BeginHorizontal();
+                {
+                    var gone = hiddenObject == null;
+
+                    GUILayout.Label(gone ? "null" : hiddenObject.name);
+                    GUILayout.FlexibleSpace();
+
+                    if (gone)
+                    {
+                        GUILayout.Box("Select", ButtonWidth);
+                        GUILayout.Box("Reveal", ButtonWidth);
+                        GUILayout.Box("Delete", ButtonWidth);
+                    }
+                    else
+                    {
+                        if (GUILayout.Button("Select", ButtonWidth)) Selection.activeGameObject = hiddenObject;
+
+                        if (GUILayout.Button(IsHidden(hiddenObject) ? "Reveal" : "Hide", ButtonWidth))
+                        {
+                            hiddenObject.hideFlags ^= HideFlags.HideInHierarchy;
+                            EditorSceneManager.MarkSceneDirty(hiddenObject.scene);
+                        }
+
+                        if (GUILayout.Button("Delete", ButtonWidth))
+                        {
+                            var scene = hiddenObject.scene;
+                            DestroyImmediate(hiddenObject);
+                            EditorSceneManager.MarkSceneDirty(scene);
+                            GatherHiddenObjects();
+                        }
+                    }
+                }
+                GUILayout.EndHorizontal();
             }
         }
 
-        Repaint();
-    }
+        #endregion
 
-    private static bool IsHidden(GameObject go)
-    {
-        return (go.hideFlags & HideFlags.HideInHierarchy) != 0;
-    }
+        #region Hidden Objects
 
-    #endregion
+        private readonly List<GameObject> HiddenObjects = new();
+
+        private void GatherHiddenObjects()
+        {
+            HiddenObjects.Clear();
+            var allObjects = FindObjectsByType<GameObject>(FindObjectsSortMode.None);
+            foreach (var go in allObjects)
+                if ((go.hideFlags & HideFlags.HideInHierarchy) != 0)
+                    HiddenObjects.Add(go);
+
+            Repaint();
+        }
+
+        private static bool IsHidden(GameObject go)
+        {
+            return (go.hideFlags & HideFlags.HideInHierarchy) != 0;
+        }
+
+        #endregion
+    }
 }
 #endif

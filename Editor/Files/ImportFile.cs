@@ -1,8 +1,8 @@
-﻿using System.IO;
-#if UNITY_EDITOR
+﻿#if UNITY_EDITOR
+using System.IO;
 using UnityEditor;
 
-namespace akira
+namespace Editor.Files
 {
     public static class ImportFile
     {
@@ -12,7 +12,7 @@ namespace akira
             string nameSpace = "akira"
         )
         {
-            string content = File.ReadAllText(txtPath);
+            var content = File.ReadAllText(txtPath);
             content = content.Replace("#ROOTNAMESPACEBEGIN#", $"namespace {nameSpace}");
             content = content.Replace("#ROOTNAMESPACEND#", "}");
 

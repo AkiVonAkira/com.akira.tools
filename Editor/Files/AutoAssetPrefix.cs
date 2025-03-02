@@ -1,59 +1,22 @@
 #if UNITY_EDITOR
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using UnityEditor;
 using UnityEngine;
 using Object = UnityEngine.Object;
-using UnityEditor;
-using System.IO; 
 
-namespace akira
+namespace Editor.Files
 {
     public class AutoAssetPrefix : AssetPostprocessor
     {
-        #region Prefix Definitions
-
-        private static readonly PrefixFileTypePair[] FileTypePairs =
-        {
-            new("anim", "AC"),
-            new("controller", "CTRL"),
-            new("fbx", "FBX"),
-            new("mat", "M"),
-            new("mp3", "SFX"),
-            new("ogg", "SFX"),
-            new("png", "SPR"),
-            new("prefab", "P"),
-            new("scenetemplate", "SCENE"),
-            new("shader", "SHADER"),
-            new("terrainlayer", "TL"),
-            new("unity", "SCENE"),
-            new("wav", "SFX"),
-        };
-
-        private static readonly PrefixAssetTypePair[] AssetTypePairs =
-        {
-            new(typeof(AnimationClip), "AC"),
-            new(typeof(AudioClip), "SFX"),
-            new(typeof(GameObject), "FBX"),
-            new(typeof(Material), "M"),
-            new(typeof(RuntimeAnimatorController), "CTRL"),
-            new(typeof(SceneAsset), "SCENE"),
-            new(typeof(ScriptableObject), "SO"),
-            new(typeof(Shader), "SHADER"),
-            new(typeof(TerrainData), "TD"),
-            new(typeof(TerrainLayer), "TL"),
-            new(typeof(Texture2D), "SPR"),
-        };
-        #endregion
-
         private static readonly HashSet<string> LoggedErrors = new();
         private static readonly HashSet<string> SubstanceFolders = new();
-        private static readonly string[] AdobeSubstancePaths = 
-        {
-            "Assets/Adobe/Substance3DForUnity"
-        };
-        
-        static void OnPostprocessAllAssets(
+
+        private static readonly string[] AdobeSubstancePaths = { "Assets/Adobe/Substance3DForUnity" };
+
+        private static void OnPostprocessAllAssets(
             string[] importedAssets,
             string[] deletedAssets,
             string[] movedAssets,
@@ -61,7 +24,7 @@ namespace akira
         )
         {
             // Collect folders containing SubstanceGraphSO assets
-            foreach (string assetPath in importedAssets)
+            foreach (var assetPath in importedAssets)
             {
                 var asset = AssetDatabase.LoadAssetAtPath<Object>(assetPath);
                 if (IsSubstanceGraphSOType(asset))
@@ -71,11 +34,11 @@ namespace akira
                 }
             }
 
-            // Log the collected folders
-            Debug.Log($"Substance folders: {string.Join(", ", SubstanceFolders)}");
+            // Only log substance folders if any were found
+            if (SubstanceFolders.Count > 0) Debug.Log($"Substance folders: {string.Join(", ", SubstanceFolders)}");
 
             // Process assets, skipping those in SubstanceGraphSO folders
-            foreach (string assetPath in importedAssets)
+            foreach (var assetPath in importedAssets)
             {
                 var normalizedAssetPath = assetPath.Replace("\\", "/");
                 if (SubstanceFolders.Any(folder => normalizedAssetPath.StartsWith(folder)))
@@ -87,22 +50,22 @@ namespace akira
                 ProcessAsset(assetPath);
             }
         }
-            
+
         private static void ProcessAsset(string assetPath)
         {
             if (IsAdobeSubstanceAsset(assetPath) || IsAdobeSubstanceImporter(assetPath))
                 return;
-            
+
             if (!assetPath.StartsWith("Assets/_Project"))
                 return;
 
             if (assetPath.EndsWith(".cs"))
                 return;
-            
+
             var oldAsset = AssetDatabase.LoadAssetAtPath<Object>(assetPath);
             if (oldAsset == null || IsSubstanceGraphSOType(oldAsset) || IsAdobeModifiedAsset(oldAsset))
                 return;
-            
+
             var assetType = GetAssetType(assetPath);
             if (assetType == null)
                 return;
@@ -129,43 +92,10 @@ namespace akira
             }
         }
 
-        #region Adobe Substance Importer Specific Checks
-        private static bool IsAdobeSubstanceAsset(string assetPath)
-        {
-            return AdobeSubstancePaths.Any(adobePath => assetPath.StartsWith(adobePath));
-        }
-
-        private static bool IsAdobeSubstanceImporter(string assetPath)
-        {
-            var importer = AssetImporter.GetAtPath(assetPath);
-            return importer != null && importer.GetType().ToString().Contains("Adobe.SubstanceEditor.Importer");
-        }
-        
-        private static bool IsSubstanceGraphSOType(Object asset)
-        {
-            return asset is ScriptableObject scriptableObject && scriptableObject.GetType().FullName == "Adobe.Substance.SubstanceGraphSO";
-        }
-        
-        private static bool IsAdobeModifiedAsset(Object asset)
-        {
-            // Check for specific metadata or properties that indicate the asset was modified by Adobe
-            if (asset is Material material)
-            {
-                return material.shader.name.Contains("graph_0");
-            }
-            if (asset is Texture2D texture)
-            {
-                return texture.name.Contains("graph_0");
-            }
-            return false;
-        }
-        #endregion
-
         private static Type GetAssetType(string assetPath)
         {
             var asset = AssetDatabase.LoadAssetAtPath<Object>(assetPath);
             if (asset != null)
-            {
                 switch (asset)
                 {
                     case ScriptableObject:
@@ -178,7 +108,6 @@ namespace akira
                     default:
                         return asset.GetType();
                 }
-            }
 
             LogErrorOnce($"Failed to load asset at path: {assetPath}");
             return null;
@@ -189,13 +118,17 @@ namespace akira
             foreach (var pair in FileTypePairs)
             {
                 if (pair.FileType != fileExtension) continue;
-                return fileNameWithoutExtension.Split('_').First() == pair.Prefix ? null : $"{pair.Prefix}_{fileNameWithoutExtension}.{fileExtension}";
+                return fileNameWithoutExtension.Split('_').First() == pair.Prefix
+                    ? null
+                    : $"{pair.Prefix}_{fileNameWithoutExtension}.{fileExtension}";
             }
 
             foreach (var pair in AssetTypePairs)
             {
                 if (pair.AssetType != assetType) continue;
-                return fileNameWithoutExtension.Split('_').First() == pair.Prefix ? null : $"{pair.Prefix}_{fileNameWithoutExtension}.{fileExtension}";
+                return fileNameWithoutExtension.Split('_').First() == pair.Prefix
+                    ? null
+                    : $"{pair.Prefix}_{fileNameWithoutExtension}.{fileExtension}";
             }
 
             LogErrorOnce($"Unknown file type: {fileExtension}");
@@ -210,6 +143,54 @@ namespace akira
             Debug.LogError(message);
             LoggedErrors.Add(message);
         }
+
+        #region Prefix Definitions
+
+        private static readonly PrefixFileTypePair[] FileTypePairs =
+        {
+            new("anim", "AC"), new("controller", "CTRL"), new("fbx", "FBX"), new("mat", "M"), new("mp3", "SFX"),
+            new("ogg", "SFX"), new("png", "SPR"), new("prefab", "P"), new("scenetemplate", "SCENE"),
+            new("shader", "SHADER"), new("terrainlayer", "TL"), new("unity", "SCENE"), new("wav", "SFX")
+        };
+
+        private static readonly PrefixAssetTypePair[] AssetTypePairs =
+        {
+            new(typeof(AnimationClip), "AC"), new(typeof(AudioClip), "SFX"), new(typeof(GameObject), "FBX"),
+            new(typeof(Material), "M"), new(typeof(RuntimeAnimatorController), "CTRL"),
+            new(typeof(SceneAsset), "SCENE"), new(typeof(ScriptableObject), "SO"), new(typeof(Shader), "SHADER"),
+            new(typeof(TerrainData), "TD"), new(typeof(TerrainLayer), "TL"), new(typeof(Texture2D), "SPR")
+        };
+
+        #endregion
+
+        #region Adobe Substance Importer Specific Checks
+
+        private static bool IsAdobeSubstanceAsset(string assetPath)
+        {
+            return AdobeSubstancePaths.Any(adobePath => assetPath.StartsWith(adobePath));
+        }
+
+        private static bool IsAdobeSubstanceImporter(string assetPath)
+        {
+            var importer = AssetImporter.GetAtPath(assetPath);
+            return importer != null && importer.GetType().ToString().Contains("Adobe.SubstanceEditor.Importer");
+        }
+
+        private static bool IsSubstanceGraphSOType(Object asset)
+        {
+            return asset is ScriptableObject scriptableObject &&
+                   scriptableObject.GetType().FullName == "Adobe.Substance.SubstanceGraphSO";
+        }
+
+        private static bool IsAdobeModifiedAsset(Object asset)
+        {
+            // Check for specific metadata or properties that indicate the asset was modified by Adobe
+            if (asset is Material material) return material.shader.name.Contains("graph_0");
+            if (asset is Texture2D texture) return texture.name.Contains("graph_0");
+            return false;
+        }
+
+        #endregion
     }
 
     #region Editor
@@ -237,6 +218,7 @@ namespace akira
             Prefix = pPrefix;
         }
     }
+
     #endregion
 }
 #endif
