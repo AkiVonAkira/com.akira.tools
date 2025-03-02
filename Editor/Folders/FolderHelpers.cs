@@ -24,6 +24,7 @@ namespace akira.Folders
         private static void Move(string newParent, string folderName)
         {
             var sourcePath = $"Assets/{folderName}";
+
             if (IsValidFolder(sourcePath))
             {
                 var destinationPath = $"Assets/{newParent}/{folderName}";

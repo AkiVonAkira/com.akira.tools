@@ -29,6 +29,7 @@ namespace akira
         {
             GUILayout.Space(10f);
             GUILayout.BeginHorizontal();
+
             {
                 if (GUILayout.Button("Refresh", BigButtonHeight)) GatherHiddenObjects();
 
@@ -46,11 +47,13 @@ namespace akira
                 $"Hidden Objects ({HiddenObjects.Count})",
                 EditorStyles.boldLabel
             );
+
             for (var i = 0; i < HiddenObjects.Count; i++)
             {
                 var hiddenObject = HiddenObjects[i];
 
                 GUILayout.BeginHorizontal();
+
                 {
                     var gone = hiddenObject == null;
 
@@ -96,6 +99,7 @@ namespace akira
         {
             HiddenObjects.Clear();
             var allObjects = FindObjectsByType<GameObject>(FindObjectsSortMode.None);
+
             foreach (var go in allObjects)
                 if ((go.hideFlags & HideFlags.HideInHierarchy) != 0)
                     HiddenObjects.Add(go);

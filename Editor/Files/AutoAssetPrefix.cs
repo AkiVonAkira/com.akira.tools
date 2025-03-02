@@ -27,6 +27,7 @@ namespace Editor.Files
             foreach (var assetPath in importedAssets)
             {
                 var asset = AssetDatabase.LoadAssetAtPath<Object>(assetPath);
+
                 if (IsSubstanceGraphSOType(asset))
                 {
                     var folder = Path.GetDirectoryName(assetPath)?.Replace("\\", "/");
@@ -41,9 +42,11 @@ namespace Editor.Files
             foreach (var assetPath in importedAssets)
             {
                 var normalizedAssetPath = assetPath.Replace("\\", "/");
+
                 if (SubstanceFolders.Any(folder => normalizedAssetPath.StartsWith(folder)))
                 {
                     Debug.Log($"Skipping asset: {assetPath} as it is in a SubstanceGraphSO folder.");
+
                     continue;
                 }
 
@@ -63,10 +66,12 @@ namespace Editor.Files
                 return;
 
             var oldAsset = AssetDatabase.LoadAssetAtPath<Object>(assetPath);
+
             if (oldAsset == null || IsSubstanceGraphSOType(oldAsset) || IsAdobeModifiedAsset(oldAsset))
                 return;
 
             var assetType = GetAssetType(assetPath);
+
             if (assetType == null)
                 return;
 
@@ -76,6 +81,7 @@ namespace Editor.Files
             var fileExtension = splitFileName.Last();
 
             var newName = GetNewName(fileNameWithoutExtension, fileExtension, assetType);
+
             if (!string.IsNullOrEmpty(newName))
             {
                 AssetDatabase.RenameAsset(assetPath, newName);
@@ -85,6 +91,7 @@ namespace Editor.Files
                 var newAssetPath =
                     $"{string.Join("/", splitFilePath.Take(splitFilePath.Length - 1))}/{newName}";
                 var asset = AssetDatabase.LoadAssetAtPath<Object>(newAssetPath);
+
                 if (asset == null) return;
                 asset.name = newName.Split('/').Last().Split('.').First();
                 EditorUtility.SetDirty(asset);
@@ -95,6 +102,7 @@ namespace Editor.Files
         private static Type GetAssetType(string assetPath)
         {
             var asset = AssetDatabase.LoadAssetAtPath<Object>(assetPath);
+
             if (asset != null)
                 switch (asset)
                 {
@@ -110,6 +118,7 @@ namespace Editor.Files
                 }
 
             LogErrorOnce($"Failed to load asset at path: {assetPath}");
+
             return null;
         }
 
@@ -118,6 +127,7 @@ namespace Editor.Files
             foreach (var pair in FileTypePairs)
             {
                 if (pair.FileType != fileExtension) continue;
+
                 return fileNameWithoutExtension.Split('_').First() == pair.Prefix
                     ? null
                     : $"{pair.Prefix}_{fileNameWithoutExtension}.{fileExtension}";
@@ -126,6 +136,7 @@ namespace Editor.Files
             foreach (var pair in AssetTypePairs)
             {
                 if (pair.AssetType != assetType) continue;
+
                 return fileNameWithoutExtension.Split('_').First() == pair.Prefix
                     ? null
                     : $"{pair.Prefix}_{fileNameWithoutExtension}.{fileExtension}";
@@ -134,6 +145,7 @@ namespace Editor.Files
             LogErrorOnce($"Unknown file type: {fileExtension}");
             LogErrorOnce($"Unknown asset type for file: {fileNameWithoutExtension}.{fileExtension}");
             LogErrorOnce($"Unknown .asset file type: {assetType}");
+
             return null;
         }
 
@@ -148,17 +160,34 @@ namespace Editor.Files
 
         private static readonly PrefixFileTypePair[] FileTypePairs =
         {
-            new("anim", "AC"), new("controller", "CTRL"), new("fbx", "FBX"), new("mat", "M"), new("mp3", "SFX"),
-            new("ogg", "SFX"), new("png", "SPR"), new("prefab", "P"), new("scenetemplate", "SCENE"),
-            new("shader", "SHADER"), new("terrainlayer", "TL"), new("unity", "SCENE"), new("wav", "SFX")
+            new("anim", "AC"),
+            new("controller", "CTRL"),
+            new("fbx", "FBX"),
+            new("mat", "M"),
+            new("mp3", "SFX"),
+            new("ogg", "SFX"),
+            new("png", "SPR"),
+            new("prefab", "P"),
+            new("scenetemplate", "SCENE"),
+            new("shader", "SHADER"),
+            new("terrainlayer", "TL"),
+            new("unity", "SCENE"),
+            new("wav", "SFX")
         };
 
         private static readonly PrefixAssetTypePair[] AssetTypePairs =
         {
-            new(typeof(AnimationClip), "AC"), new(typeof(AudioClip), "SFX"), new(typeof(GameObject), "FBX"),
-            new(typeof(Material), "M"), new(typeof(RuntimeAnimatorController), "CTRL"),
-            new(typeof(SceneAsset), "SCENE"), new(typeof(ScriptableObject), "SO"), new(typeof(Shader), "SHADER"),
-            new(typeof(TerrainData), "TD"), new(typeof(TerrainLayer), "TL"), new(typeof(Texture2D), "SPR")
+            new(typeof(AnimationClip), "AC"),
+            new(typeof(AudioClip), "SFX"),
+            new(typeof(GameObject), "FBX"),
+            new(typeof(Material), "M"),
+            new(typeof(RuntimeAnimatorController), "CTRL"),
+            new(typeof(SceneAsset), "SCENE"),
+            new(typeof(ScriptableObject), "SO"),
+            new(typeof(Shader), "SHADER"),
+            new(typeof(TerrainData), "TD"),
+            new(typeof(TerrainLayer), "TL"),
+            new(typeof(Texture2D), "SPR")
         };
 
         #endregion
@@ -173,6 +202,7 @@ namespace Editor.Files
         private static bool IsAdobeSubstanceImporter(string assetPath)
         {
             var importer = AssetImporter.GetAtPath(assetPath);
+
             return importer != null && importer.GetType().ToString().Contains("Adobe.SubstanceEditor.Importer");
         }
 
@@ -187,6 +217,7 @@ namespace Editor.Files
             // Check for specific metadata or properties that indicate the asset was modified by Adobe
             if (asset is Material material) return material.shader.name.Contains("graph_0");
             if (asset is Texture2D texture) return texture.name.Contains("graph_0");
+
             return false;
         }
 

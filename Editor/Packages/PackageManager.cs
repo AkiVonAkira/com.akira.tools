@@ -32,6 +32,7 @@ namespace akira.Packages
                 if (!success)
                 {
                     Debug.LogError($"Failed to install package: {packageId}");
+
                     continue;
                 }
 
@@ -51,6 +52,7 @@ namespace akira.Packages
                 if (!currentRequest.IsCompleted) return;
 
                 var success = currentRequest.Status == StatusCode.Success;
+
                 if (success)
                     Debug.Log($"Successfully installed package: {packageId}");
                 else

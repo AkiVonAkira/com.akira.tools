@@ -23,6 +23,7 @@ namespace akira.UI
 
             var button = new Button();
             button.text = "OK";
+
             button.clicked += () =>
             {
                 ImportSingletonScript(namespaceInput);
@@ -42,12 +43,14 @@ namespace akira.UI
         private void ImportSingletonScript(string nameSpace)
         {
             var packageName = "com.akira.tools";
+
             var txtPath = Path.Combine(
                 Application.dataPath,
                 "../Packages",
                 packageName,
                 "Scripts/Singleton.txt"
             );
+
             var outputPath = Path.Combine(
                 Application.dataPath,
                 "_Project",

@@ -20,6 +20,7 @@ namespace akira.Packages
                 if (!request.IsCompleted) return;
 
                 var success = request.Status == StatusCode.Success;
+
                 if (success)
                     Debug.Log($"Package {packageName} installed successfully.");
                 else
