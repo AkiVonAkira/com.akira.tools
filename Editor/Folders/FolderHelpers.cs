@@ -18,7 +18,42 @@ namespace akira.Folders
                 //Debug.Log($"Created folder: {path}");
             }
 
+            CreateAssemblyDefinition(rootPath);
             Refresh();
+        }
+
+        private static void CreateAssemblyDefinition(string rootPath)
+        {
+            var packageName = "com.akira.tools";
+
+            var txtPath = Path.Combine(
+                Application.dataPath,
+                "../Packages",
+                packageName,
+                "Scripts/ProjectAsmdef.txt"
+            );
+
+            var outputPath = Path.Combine(
+                Application.dataPath,
+                rootPath,
+                "_Scripts",
+                "_Project.asmdef"
+            );
+
+            // Create _Scripts folder if it doesn't exist
+            var scriptsFolder = Path.Combine(Application.dataPath, rootPath, "_Scripts");
+
+            if (!Directory.Exists(scriptsFolder))
+            {
+                Directory.CreateDirectory(scriptsFolder);
+            }
+
+            // Only create asmdef if it doesn't exist
+            if (!File.Exists(outputPath))
+            {
+                File.Copy(txtPath, outputPath);
+                Debug.Log($"Created assembly definition at: {outputPath}");
+            }
         }
 
         private static void Move(string newParent, string folderName)

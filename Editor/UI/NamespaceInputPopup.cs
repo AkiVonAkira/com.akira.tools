@@ -9,7 +9,7 @@ namespace akira.UI
 {
     public class NamespaceInputPopup : EditorWindow
     {
-        private string namespaceInput = "akira";
+        private string namespaceInput = "_Project";
 
         private void CreateGUI()
         {

@@ -2,8 +2,10 @@
 using System;
 using akira.Folders;
 using akira.Packages;
+using akira.Scene;
 using UnityEditor;
 using UnityEngine;
+
 //using akira.Assets;
 
 namespace akira
@@ -53,7 +55,8 @@ namespace akira
         {
             string[] packages =
             {
-                "com.unity.cinemachine", "com.unity.postprocessing", "com.unity.2d.animation",
+                "com.unity.cinemachine",
+                "com.unity.2d.animation",
                 "git+https://github.com/adammyhre/Unity-Utils.git",
                 "git+https://github.com/adammyhre/Unity-Improved-Timers.git",
                 // keep InputSystem last because it requires a restart
@@ -63,6 +66,19 @@ namespace akira
             await PackageManager.InstallPackages(packages);
         }
 
+        [MenuItem("Tools/Setup/Scene/Create Basic Hierarchy")]
+        public static void CreateBasicSceneHierarchy()
+        {
+            try
+            {
+                SceneHierarchySetup.CreateBasicHierarchy();
+                Debug.Log("Scene hierarchy setup completed");
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"Error setting up scene hierarchy: {e.Message}");
+            }
+        }
 
         [MenuItem("Tools/Setup/Disable Domain Reload")]
         public static void DisableDomainReload()

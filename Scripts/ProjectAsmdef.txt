@@ -1,6 +1,6 @@
 {
-    "name": "Akira.Tools",
-    "rootNamespace": "akira",
+    "name": "_Project",
+    "rootNamespace": "_Project",
     "references": [],
     "includePlatforms": [],
     "excludePlatforms": [],
