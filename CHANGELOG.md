@@ -1,3 +1,15 @@
+# [1.7.0](https://github.com/AkiVonAkira/com.akira.tools/compare/v1.6.1...v1.7.0) (2025-03-03)
+
+
+### Bug Fixes
+
+* formatting ([59ae150](https://github.com/AkiVonAkira/com.akira.tools/commit/59ae150bc4de4b47d3fc538e74da4c8aaddccb94))
+
+
+### Features
+
+* Scene Heirarchy Template & Asmdef file ([e07d19c](https://github.com/AkiVonAkira/com.akira.tools/commit/e07d19ca0bd2b400e23d4cd04e272803def817f9))
+
 ## [1.6.1](https://github.com/AkiVonAkira/com.akira.tools/compare/v1.6.0...v1.6.1) (2025-02-06)
 
 
