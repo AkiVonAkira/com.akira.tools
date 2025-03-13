@@ -1,3 +1,10 @@
+## [1.7.1](https://github.com/AkiVonAkira/com.akira.tools/compare/v1.7.0...v1.7.1) (2025-03-13)
+
+
+### Bug Fixes
+
+* Utils not being called Utilities in folders ([2a0b4ec](https://github.com/AkiVonAkira/com.akira.tools/commit/2a0b4ec906a94b35a9b615176501cb191f2a94fb))
+
 # [1.7.0](https://github.com/AkiVonAkira/com.akira.tools/compare/v1.6.1...v1.7.0) (2025-03-03)
 
 
