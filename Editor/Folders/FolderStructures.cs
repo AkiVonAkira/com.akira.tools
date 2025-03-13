@@ -61,9 +61,8 @@ namespace akira.Folders
             // Utilities & Extensions
             "_Scripts/Extensions",
             "_Scripts/Interfaces",
-            "_Scripts/Utils/Constants",
-            "_Scripts/Utils/Helpers",
-            "_Scripts/Utilities"
+            "_Scripts/Utilities/Constants",
+            "_Scripts/Utilities/Helpers",
         };
 
         private static readonly string[] TypeBasedFolders =
