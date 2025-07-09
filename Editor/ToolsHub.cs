@@ -31,31 +31,30 @@ namespace akira
     public class ToolsHub : EditorWindow
     {
         private static ToolsHub _instance;
-        
-        private readonly Dictionary<string, bool> _foldoutStates = new();
-        private static List<MethodInfo> _cachedMethods = new();
-        private readonly List<PageState> _pageStack = new();
-        
-        private MenuNode _rootNode;
-        private Vector2 _scrollPosition;
-        
-        private int _currentPageIndex = -1;
-        
-        private readonly float _buttonHeight = 28;
-        private readonly int _buttonsPerRow = 4;
 
-        
-        private GUIStyle _buttonStyle;
-        private GUIStyle _compactFoldoutStyle;
-        private GUIStyle _headerStyle;
-        
+        private static List<MethodInfo> _cachedMethods = new();
+
         private static Texture2D _normalBg;
         private static Texture2D _hoverBg;
         private static Texture2D _activeBg;
-        private Texture2D _popupIcon;
-        
+
+        private readonly float _buttonHeight = 28;
+        private readonly int _buttonsPerRow = 4;
+
         private readonly Color _foldoutBgColor = new(0.18f, 0.18f, 0.18f, 1f);
         private readonly Color _foldoutBorderColor = new(0.35f, 0.35f, 0.35f, 1f);
+        private readonly List<PageState> _pageStack = new();
+
+
+        private GUIStyle _buttonStyle;
+        private GUIStyle _compactFoldoutStyle;
+
+        private int _currentPageIndex = -1;
+        private GUIStyle _headerStyle;
+        private Texture2D _popupIcon;
+
+        private MenuNode _rootNode;
+        private Vector2 _scrollPosition;
 
         private void OnEnable()
         {
@@ -360,27 +359,44 @@ namespace akira
 
             if (!hasContent) return;
 
-            if (!_foldoutStates.ContainsKey(node.Path))
-                _foldoutStates[node.Path] = true;
+            var isOpen = ToolsHubSettings.GetFoldoutState(node.Path);
+
             var headerRect = EditorGUILayout.GetControlRect(GUILayout.Height(20), GUILayout.ExpandWidth(true));
             var arrowSize = 12f;
             var arrowPadding = 2f;
             EditorGUI.DrawRect(headerRect, _foldoutBgColor);
             DrawRectBorder(headerRect, _foldoutBorderColor, 1);
             var arrowRect = new Rect(headerRect.x + indent * 12 + arrowPadding, headerRect.y + 4, arrowSize, arrowSize);
-            var isOpen = _foldoutStates[node.Path];
-            EditorGUI.BeginChangeCheck();
-            isOpen = EditorGUI.Foldout(arrowRect, isOpen, GUIContent.none, false);
 
-            if (EditorGUI.EndChangeCheck())
-                _foldoutStates[node.Path] = isOpen;
-
+            // Calculate label rect to cover the rest of the header
             var labelRect = new Rect(arrowRect.xMax + 2, headerRect.y,
                 headerRect.width - (arrowRect.xMax - headerRect.x), headerRect.height);
+
             var style = _compactFoldoutStyle ?? EditorStyles.label;
+
+            // Draw foldout arrow (no label)
+            EditorGUI.BeginChangeCheck();
+            isOpen = EditorGUI.Foldout(arrowRect, isOpen, GUIContent.none, false);
+            var arrowChanged = EditorGUI.EndChangeCheck();
+
+            // Draw label
             EditorGUI.LabelField(labelRect, node.Name, style);
 
-            if (_foldoutStates[node.Path])
+            // Handle click on label to toggle foldout
+            var e = Event.current;
+
+            if (e.type == EventType.MouseDown && labelRect.Contains(e.mousePosition))
+            {
+                isOpen = !isOpen;
+                ToolsHubSettings.SetFoldoutState(node.Path, isOpen);
+                e.Use();
+            }
+            else if (arrowChanged)
+            {
+                ToolsHubSettings.SetFoldoutState(node.Path, isOpen);
+            }
+
+            if (ToolsHubSettings.GetFoldoutState(node.Path))
             {
                 EditorGUILayout.BeginVertical();
 
