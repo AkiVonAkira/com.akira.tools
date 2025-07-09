@@ -5,15 +5,39 @@ using System.IO;
 using System.Linq;
 using UnityEditor;
 using UnityEngine;
+using akira;
 using Object = UnityEngine.Object;
 
 namespace Editor.Files
 {
     public class AutoAssetPrefix : AssetPostprocessor
     {
+        // Use persistent settings
+        public static bool Enabled
+        {
+            get => ToolsHubSettings.Data.AssetPrefixEnabled;
+            set
+            {
+                ToolsHubSettings.Data.AssetPrefixEnabled = value;
+                ToolsHubSettings.Save();
+            }
+        }
+
+        // For compatibility with ToolsHub UI
+        public static int RecentRenameDisplayCount
+        {
+            get => ToolsHubSettings.Data.RecentRenameDisplayCount;
+            set
+            {
+                ToolsHubSettings.Data.RecentRenameDisplayCount = value;
+                ToolsHubSettings.Save();
+            }
+        }
+
+        // Static variables
+        public static List<AssetRenameLogEntry> RecentRenames => RenameLogStore.Data.RecentRenames;
         private static readonly HashSet<string> LoggedErrors = new();
         private static readonly HashSet<string> SubstanceFolders = new();
-
         private static readonly string[] AdobeSubstancePaths = { "Assets/Adobe/Substance3DForUnity" };
 
         private static void OnPostprocessAllAssets(
@@ -23,6 +47,9 @@ namespace Editor.Files
             string[] movedFromAssetPaths
         )
         {
+            if (!Enabled)
+                return;
+
             // Collect folders containing SubstanceGraphSO assets
             foreach (var assetPath in importedAssets)
             {
@@ -37,7 +64,9 @@ namespace Editor.Files
 
             // Only log substance folders if any were found
             if (SubstanceFolders.Count > 0) Debug.Log($"Substance folders: {string.Join(", ", SubstanceFolders)}");
+            // Only log substance folders if any were found
 
+            // Process assets, skipping those in SubstanceGraphSO folders
             // Process assets, skipping those in SubstanceGraphSO folders
             foreach (var assetPath in importedAssets)
             {
@@ -65,7 +94,16 @@ namespace Editor.Files
             if (assetPath.EndsWith(".cs"))
                 return;
 
-            var oldAsset = AssetDatabase.LoadAssetAtPath<Object>(assetPath);
+            Object oldAsset = null;
+            try
+            {
+                oldAsset = AssetDatabase.LoadAssetAtPath<Object>(assetPath);
+            }
+            catch
+            {
+                // Suppress errors from Unity's asset pipeline timing
+                return;
+            }
 
             if (oldAsset == null || IsSubstanceGraphSOType(oldAsset) || IsAdobeModifiedAsset(oldAsset))
                 return;
@@ -87,15 +125,24 @@ namespace Editor.Files
                 AssetDatabase.RenameAsset(assetPath, newName);
                 AssetDatabase.Refresh();
 
-                // Update the main object name to match the new filename
                 var newAssetPath =
                     $"{string.Join("/", splitFilePath.Take(splitFilePath.Length - 1))}/{newName}";
-                var asset = AssetDatabase.LoadAssetAtPath<Object>(newAssetPath);
+                Object asset = null;
+                try
+                {
+                    asset = AssetDatabase.LoadAssetAtPath<Object>(newAssetPath);
+                }
+                catch
+                {
+                    return;
+                }
 
                 if (asset == null) return;
                 asset.name = newName.Split('/').Last().Split('.').First();
                 EditorUtility.SetDirty(asset);
-                LogErrorOnce($"Renamed asset: {assetPath} to {newName}");
+
+                // Add to persistent recent renames log, now tracks GUID chain
+                RenameLogStore.AddRename(fileNameWithoutExtension + "." + fileExtension, newName, newAssetPath);
             }
         }
 

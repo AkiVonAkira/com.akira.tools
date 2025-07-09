@@ -5,8 +5,7 @@ using akira.Packages;
 using akira.Scene;
 using UnityEditor;
 using UnityEngine;
-
-//using akira.Assets;
+using akira.UI; // Add this for ScriptImportPage
 
 namespace akira
 {
@@ -14,7 +13,7 @@ namespace akira
     {
         private const string RootFolder = "_Project";
 
-        [MenuItem("Tools/Setup/Folders/Type-Based")]
+        [MenuButtonItem("Setup/Folders", "Type-Based", "Create a type-based folder structure")]
         public static void CreateTypeBasedDefaultFolders()
         {
             try
@@ -32,7 +31,7 @@ namespace akira
             }
         }
 
-        [MenuItem("Tools/Setup/Folders/Function-Based")]
+        [MenuButtonItem("Setup/Folders", "Function-Based", "Create a function-based folder structure")]
         public static void CreateFunctionBasedDefaultFolders()
         {
             try
@@ -50,7 +49,7 @@ namespace akira
             }
         }
 
-        [MenuItem("Tools/Setup/Packages/Essential")]
+        [MenuButtonItem("Setup/Packages", "Install Essentials", "Install all essential packages")]
         public static async void InstallEssentialPackages()
         {
             string[] packages =
@@ -66,7 +65,7 @@ namespace akira
             await PackageManager.InstallPackages(packages);
         }
 
-        [MenuItem("Tools/Setup/Scene/Create Basic Hierarchy")]
+        [MenuButtonItem("Setup/Scene", "Basic Hierarchy", "Create a basic scene hierarchy")]
         public static void CreateBasicSceneHierarchy()
         {
             try
@@ -80,12 +79,18 @@ namespace akira
             }
         }
 
-        [MenuItem("Tools/Setup/Disable Domain Reload")]
+        [MenuButtonItem("Settings", "Disable Domain Reload", "Disable domain reload for faster play mode")]
         public static void DisableDomainReload()
         {
             EditorSettings.enterPlayModeOptions =
                 EnterPlayModeOptions.DisableDomainReload | EnterPlayModeOptions.DisableSceneReload;
             Debug.Log("Domain reload disabled.");
+        }
+
+        [MenuButtonItem("Scripts/Utilities", "Singleton", "Import Singleton script")]
+        private static void ImportSingleton()
+        {
+            ToolsHub.ShowScriptImportPage("Singleton.txt", "Singleton.cs", "Singleton");
         }
     }
 }
