@@ -1,3 +1,10 @@
+# [1.8.0](https://github.com/AkiVonAkira/com.akira.tools/compare/v1.7.1...v1.8.0) (2025-07-09)
+
+
+### Features
+
+* ToolsHub window ([902e024](https://github.com/AkiVonAkira/com.akira.tools/commit/902e0249281d54103f9944df9f6407eeec77464f))
+
 ## [1.7.1](https://github.com/AkiVonAkira/com.akira.tools/compare/v1.7.0...v1.7.1) (2025-03-13)
 
 
