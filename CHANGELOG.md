@@ -1,3 +1,10 @@
+## [1.8.1](https://github.com/AkiVonAkira/com.akira.tools/compare/v1.8.0...v1.8.1) (2025-07-09)
+
+
+### Bug Fixes
+
+* reformat and cleanup ([0473736](https://github.com/AkiVonAkira/com.akira.tools/commit/0473736a59cf0f155d3faf091c33ca08b1f47e96))
+
 # [1.8.0](https://github.com/AkiVonAkira/com.akira.tools/compare/v1.7.1...v1.8.0) (2025-07-09)
 
 
