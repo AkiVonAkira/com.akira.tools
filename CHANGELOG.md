@@ -1,3 +1,15 @@
+# [1.9.0](https://github.com/AkiVonAkira/com.akira.tools/compare/v1.8.1...v1.9.0) (2025-07-09)
+
+
+### Bug Fixes
+
+* remember foldout state ([7234d17](https://github.com/AkiVonAkira/com.akira.tools/commit/7234d17c5cf36c66cbbcb0f953757525662061ba))
+
+
+### Features
+
+* folder customization & better script import ([9abf388](https://github.com/AkiVonAkira/com.akira.tools/commit/9abf388cedcd47a4a9064bf6c1bda4f80c6c1035))
+
 ## [1.8.1](https://github.com/AkiVonAkira/com.akira.tools/compare/v1.8.0...v1.8.1) (2025-07-09)
 
 
