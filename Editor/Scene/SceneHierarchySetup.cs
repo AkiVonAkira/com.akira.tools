@@ -39,9 +39,9 @@ namespace akira.Scene
             "------------------------",
             "[UI]/Canvases",
             "[UI]/EventSystem",
-            "------------------------",
+            "------------------------"
         };
-        
+
         private static readonly Dictionary<string, GameObject> HeaderObjects = new();
 
         public static void CreateBasicHierarchy()
@@ -54,6 +54,7 @@ namespace akira.Scene
                 if (objectName == "------------------------")
                 {
                     CreateGameObject(objectName);
+
                     continue;
                 }
 
@@ -78,10 +79,7 @@ namespace akira.Scene
                 {
                     // Create header object
                     var go = CreateGameObject(objectName);
-                    if (objectName.StartsWith("[") && objectName.EndsWith("]"))
-                    {
-                        HeaderObjects[objectName] = go;
-                    }
+                    if (objectName.StartsWith("[") && objectName.EndsWith("]")) HeaderObjects[objectName] = go;
                 }
             }
 
@@ -92,6 +90,7 @@ namespace akira.Scene
         {
             var go = new GameObject(name);
             go.transform.SetAsLastSibling();
+
             return go;
         }
     }

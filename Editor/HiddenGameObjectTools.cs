@@ -12,8 +12,16 @@ namespace akira
         private static readonly List<GameObject> HiddenObjects = new();
         private static Vector2 _scroll;
 
-        [MenuButtonItem("Others", "Hidden GameObject Tools", "Show hidden GameObjects", isPage: true)]
-        public static void ShowInToolsHub() { /* No-op, page logic handled by DrawPage */ }
+        private void OnGUI()
+        {
+            ShowInToolsHub_Page();
+        }
+
+        [MenuButtonItem("Others", "Hidden GameObject Tools", "Show hidden GameObjects", true)]
+        public static void ShowInToolsHub()
+        {
+            /* No-op, page logic handled by DrawPage */
+        }
 
         // Draws the page inside ToolsHub
         public static void ShowInToolsHub_Page()
@@ -21,12 +29,14 @@ namespace akira
             GUILayout.Space(10f);
             GUILayout.BeginHorizontal();
             if (GUILayout.Button("Refresh", GUILayout.Height(35))) GatherHiddenObjects();
+
             if (GUILayout.Button("Test", GUILayout.Height(35), GUILayout.Width(80)))
             {
                 var go = new GameObject("HiddenTestObject");
                 go.hideFlags = HideFlags.HideInHierarchy;
                 GatherHiddenObjects();
             }
+
             GUILayout.EndHorizontal();
             GUILayout.Space(10f);
 
@@ -36,6 +46,7 @@ namespace akira
             );
 
             _scroll = EditorGUILayout.BeginScrollView(_scroll, GUILayout.Height(300));
+
             for (var i = 0; i < HiddenObjects.Count; i++)
             {
                 var hiddenObject = HiddenObjects[i];
@@ -64,14 +75,17 @@ namespace akira
                     if (GUILayout.Button("Delete", GUILayout.Width(80)))
                     {
                         var scene = hiddenObject.scene;
-                        Object.DestroyImmediate(hiddenObject);
+                        DestroyImmediate(hiddenObject);
                         EditorSceneManager.MarkSceneDirty(scene);
                         GatherHiddenObjects();
+
                         break;
                     }
                 }
+
                 GUILayout.EndHorizontal();
             }
+
             EditorGUILayout.EndScrollView();
         }
 
@@ -79,7 +93,8 @@ namespace akira
         private static void GatherHiddenObjects()
         {
             HiddenObjects.Clear();
-            var allObjects = Object.FindObjectsByType<GameObject>(FindObjectsSortMode.None);
+            var allObjects = FindObjectsByType<GameObject>(FindObjectsSortMode.None);
+
             foreach (var go in allObjects)
                 if ((go.hideFlags & HideFlags.HideInHierarchy) != 0)
                     HiddenObjects.Add(go);
@@ -97,11 +112,6 @@ namespace akira
             var window = GetWindow<HiddenGameObjectTools>();
             window.titleContent = new GUIContent("Hidden GOs");
             GatherHiddenObjects();
-        }
-
-        private void OnGUI()
-        {
-            ShowInToolsHub_Page();
         }
     }
 }

@@ -42,6 +42,7 @@ namespace Editor.Files
             {
                 if (_data == null)
                     Load();
+
                 return _data;
             }
         }
@@ -49,6 +50,7 @@ namespace Editor.Files
         public static void Load()
         {
             EnsureSaveFolder();
+
             if (File.Exists(LogPath))
             {
                 var json = File.ReadAllText(LogPath);
@@ -70,36 +72,38 @@ namespace Editor.Files
         private static void EnsureSaveFolder()
         {
             var dir = Path.GetDirectoryName(LogPath);
+
             if (!Directory.Exists(dir))
                 Directory.CreateDirectory(dir);
         }
 
         public static void AddRename(string oldName, string newName, string assetPath)
         {
-            string guid = AssetDatabase.AssetPathToGUID(assetPath);
+            var guid = AssetDatabase.AssetPathToGUID(assetPath);
 
             // Try to find the previous rename entry for this asset by GUID
             AssetRenameLogEntry previousEntry = null;
+
             foreach (var entry in Data.RecentRenames)
-            {
                 if (!string.IsNullOrEmpty(entry.Guid) && entry.Guid == guid)
                 {
                     previousEntry = entry;
+
                     break;
                 }
-            }
 
-            Data.RecentRenames.Insert(0, new AssetRenameLogEntry
-            {
-                IconPath = guid,
-                OldName = oldName,
-                NewName = newName,
-                AssetPath = assetPath,
-                DateTime = DateTime.Now.ToString("u"),
-                Guid = guid,
-                PreviousAssetPath = previousEntry?.AssetPath,
-                OriginalAssetPath = previousEntry?.OriginalAssetPath ?? oldName
-            });
+            Data.RecentRenames.Insert(0,
+                new AssetRenameLogEntry
+                {
+                    IconPath = guid,
+                    OldName = oldName,
+                    NewName = newName,
+                    AssetPath = assetPath,
+                    DateTime = DateTime.Now.ToString("u"),
+                    Guid = guid,
+                    PreviousAssetPath = previousEntry?.AssetPath,
+                    OriginalAssetPath = previousEntry?.OriginalAssetPath ?? oldName
+                });
             Save();
         }
 
@@ -108,7 +112,8 @@ namespace Editor.Files
             if (string.IsNullOrEmpty(entry.Guid))
                 return entry.AssetPath;
 
-            string assetPath = AssetDatabase.GUIDToAssetPath(entry.Guid);
+            var assetPath = AssetDatabase.GUIDToAssetPath(entry.Guid);
+
             if (!string.IsNullOrEmpty(assetPath))
                 return assetPath;
 

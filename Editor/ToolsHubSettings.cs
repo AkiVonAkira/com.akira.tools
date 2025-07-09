@@ -9,6 +9,7 @@ namespace akira
     public class ToolsHubSettingsData
     {
         public bool AssetPrefixEnabled = true;
+
         public int RecentRenameDisplayCount = 5;
         // Only settings here, no rename log
     }
@@ -29,6 +30,7 @@ namespace akira
             {
                 if (_data == null)
                     Load();
+
                 return _data;
             }
         }
@@ -36,6 +38,7 @@ namespace akira
         public static void Load()
         {
             EnsureSaveFolder();
+
             if (File.Exists(SettingsPath))
             {
                 var json = File.ReadAllText(SettingsPath);
@@ -57,6 +60,7 @@ namespace akira
         private static void EnsureSaveFolder()
         {
             var dir = Path.GetDirectoryName(SettingsPath);
+
             if (!Directory.Exists(dir))
                 Directory.CreateDirectory(dir);
         }

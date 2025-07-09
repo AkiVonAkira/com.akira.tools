@@ -43,10 +43,7 @@ namespace akira.Folders
             // Create _Scripts folder if it doesn't exist
             var scriptsFolder = Path.Combine(Application.dataPath, rootPath, "_Scripts");
 
-            if (!Directory.Exists(scriptsFolder))
-            {
-                Directory.CreateDirectory(scriptsFolder);
-            }
+            if (!Directory.Exists(scriptsFolder)) Directory.CreateDirectory(scriptsFolder);
 
             // Only create asmdef if it doesn't exist
             if (!File.Exists(outputPath))

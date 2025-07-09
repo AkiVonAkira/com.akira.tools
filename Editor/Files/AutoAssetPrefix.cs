@@ -3,15 +3,20 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using akira;
 using UnityEditor;
 using UnityEngine;
-using akira;
 using Object = UnityEngine.Object;
 
 namespace Editor.Files
 {
     public class AutoAssetPrefix : AssetPostprocessor
     {
+        private static readonly HashSet<string> LoggedErrors = new();
+        private static readonly HashSet<string> SubstanceFolders = new();
+
+        private static readonly string[] AdobeSubstancePaths = { "Assets/Adobe/Substance3DForUnity" };
+
         // Use persistent settings
         public static bool Enabled
         {
@@ -36,9 +41,6 @@ namespace Editor.Files
 
         // Static variables
         public static List<AssetRenameLogEntry> RecentRenames => RenameLogStore.Data.RecentRenames;
-        private static readonly HashSet<string> LoggedErrors = new();
-        private static readonly HashSet<string> SubstanceFolders = new();
-        private static readonly string[] AdobeSubstancePaths = { "Assets/Adobe/Substance3DForUnity" };
 
         private static void OnPostprocessAllAssets(
             string[] importedAssets,
@@ -95,6 +97,7 @@ namespace Editor.Files
                 return;
 
             Object oldAsset = null;
+
             try
             {
                 oldAsset = AssetDatabase.LoadAssetAtPath<Object>(assetPath);
@@ -128,6 +131,7 @@ namespace Editor.Files
                 var newAssetPath =
                     $"{string.Join("/", splitFilePath.Take(splitFilePath.Length - 1))}/{newName}";
                 Object asset = null;
+
                 try
                 {
                     asset = AssetDatabase.LoadAssetAtPath<Object>(newAssetPath);

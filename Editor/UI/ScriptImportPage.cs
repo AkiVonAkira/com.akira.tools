@@ -16,7 +16,7 @@ namespace akira.UI
         private static Action _onClose;
 
         /// <summary>
-        /// Call this to prepare the page before showing it in ToolsHub.
+        ///     Call this to prepare the page before showing it in ToolsHub.
         /// </summary>
         public static void Show(string templateName, string outputName, string displayName, Action onClose)
         {
@@ -28,7 +28,7 @@ namespace akira.UI
         }
 
         /// <summary>
-        /// Draws the import UI as a ToolsHub page.
+        ///     Draws the import UI as a ToolsHub page.
         /// </summary>
         public static void Draw()
         {
@@ -39,21 +39,21 @@ namespace akira.UI
 
             GUILayout.Space(8);
             EditorGUILayout.BeginHorizontal();
+
             if (GUILayout.Button("Import", GUILayout.Height(28)))
             {
                 ImportScript(_namespaceInput);
                 _onClose?.Invoke();
             }
-            if (GUILayout.Button("Cancel", GUILayout.Height(28)))
-            {
-                _onClose?.Invoke();
-            }
+
+            if (GUILayout.Button("Cancel", GUILayout.Height(28))) _onClose?.Invoke();
             EditorGUILayout.EndHorizontal();
         }
 
         private static void ImportScript(string nameSpace)
         {
             var packageName = "com.akira.tools";
+
             var txtPath = Path.Combine(
                 Application.dataPath,
                 "../Packages",
@@ -61,6 +61,7 @@ namespace akira.UI
                 "Scripts",
                 _scriptTemplateName
             );
+
             var outputPath = Path.Combine(
                 Application.dataPath,
                 "_Project",
