@@ -9,77 +9,161 @@ namespace akira.UI
 {
     public static class ScriptImportPage
     {
-        private static string _namespaceInput = "_Project";
-        private static string _scriptTemplateName;
-        private static string _scriptOutputName;
-        private static string _scriptDisplayName;
+        private static string _templateName;
+        private static string _outputName;
+        private static string _displayName;
+        private static string _outputPath;
+        private static string _namespace;
+        private static string _templateContent;
+        private static string _previewContent;
+        private static Action _onImport;
         private static Action _onClose;
+        private static string _menuPath;
+        private static Vector2 _previewScroll;
 
-        /// <summary>
-        ///     Call this to prepare the page before showing it in ToolsHub.
-        /// </summary>
-        public static void Show(string templateName, string outputName, string displayName, Action onClose)
+        public static void Show(string templateName, string outputName, string displayName, Action onImport,
+            Action onClose, string menuPath = null)
         {
-            _scriptTemplateName = templateName;
-            _scriptOutputName = outputName;
-            _scriptDisplayName = displayName;
+            _templateName = templateName;
+            _outputName = outputName;
+            _displayName = displayName;
+            _onImport = onImport;
             _onClose = onClose;
-            _namespaceInput = "_Project";
+            _menuPath = menuPath;
+
+            var defaultPath = ToolsMenu.GetDefaultScriptOutputPath(_outputName, _menuPath);
+            _outputPath = defaultPath.Replace('\\', '/');
+
+#if UNITY_2020_2_OR_NEWER
+            _namespace = !string.IsNullOrEmpty(EditorSettings.projectGenerationRootNamespace)
+                ? EditorSettings.projectGenerationRootNamespace
+                : "_Script";
+#else
+            _namespace = "_Script";
+#endif
+
+            var templatePath = GetTemplatePath();
+
+            if (!string.IsNullOrEmpty(templatePath) && File.Exists(templatePath))
+                _templateContent = File.ReadAllText(templatePath);
+            else
+                _templateContent = "// Template not found";
+
+            UpdatePreview();
         }
 
-        /// <summary>
-        ///     Draws the import UI as a ToolsHub page.
-        /// </summary>
-        public static void Draw()
+        private static void UpdatePreview()
         {
-            GUILayout.Space(8);
-            GUILayout.Label($"Enter the namespace for the {_scriptDisplayName} script:", EditorStyles.label);
-
-            _namespaceInput = EditorGUILayout.TextField(_namespaceInput);
-
-            GUILayout.Space(8);
-            EditorGUILayout.BeginHorizontal();
-
-            if (GUILayout.Button("Import", GUILayout.Height(28)))
+            if (string.IsNullOrEmpty(_templateContent) || _templateContent == "// Template not found")
             {
-                ImportScript(_namespaceInput);
-                _onClose?.Invoke();
+                _previewContent = "// No preview available";
+
+                return;
             }
 
-            if (GUILayout.Button("Cancel", GUILayout.Height(28))) _onClose?.Invoke();
+            _previewContent = _templateContent
+                .Replace("#ROOTNAMESPACEBEGIN#", $"namespace {_namespace}")
+                .Replace("#ROOTNAMESPACEND#", "}")
+                .Replace("#SCRIPTNAME#", Path.GetFileNameWithoutExtension(_outputName));
+        }
+
+        public static void Draw()
+        {
+            GUILayout.Label("Script Import", EditorStyles.boldLabel);
+            GUILayout.Space(8);
+
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("Namespace:", GUILayout.Width(80));
+            var newNamespace = EditorGUILayout.TextField(_namespace);
+
+            if (newNamespace != _namespace)
+            {
+                _namespace = newNamespace;
+                UpdatePreview();
+            }
+
+            EditorGUILayout.EndHorizontal();
+
+            GUILayout.Space(4);
+
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("Output Path:", GUILayout.Width(80));
+            var displayPath = _outputPath;
+            var assetsIdx = displayPath.IndexOf("Assets/", StringComparison.OrdinalIgnoreCase);
+            if (assetsIdx < 0) assetsIdx = displayPath.IndexOf("Assets\\", StringComparison.OrdinalIgnoreCase);
+
+            if (assetsIdx >= 0)
+                displayPath = displayPath.Substring(assetsIdx).Replace('\\', '/');
+            else
+                displayPath = _outputPath.Replace('\\', '/');
+            var newDisplayPath = EditorGUILayout.TextField(displayPath);
+
+            if (newDisplayPath != displayPath)
+            {
+                _outputPath = newDisplayPath.Replace('\\', '/');
+                UpdatePreview();
+            }
+
+            if (GUILayout.Button("...", GUILayout.Width(28)))
+            {
+                var dir = Path.GetDirectoryName(_outputPath);
+                var selected = EditorUtility.SaveFilePanel("Select Script Output Path", dir, _outputName, "cs");
+
+                if (!string.IsNullOrEmpty(selected))
+                {
+                    _outputPath = selected.Replace('\\', '/');
+                    UpdatePreview();
+                }
+            }
+
+            EditorGUILayout.EndHorizontal();
+
+            GUILayout.Space(4);
+
+            EditorGUILayout.LabelField("Preview:", EditorStyles.boldLabel);
+
+            GUILayout.BeginVertical(GUILayout.ExpandHeight(true));
+            _previewScroll = EditorGUILayout.BeginScrollView(_previewScroll, GUILayout.ExpandHeight(true));
+
+            EditorGUILayout.SelectableLabel(_previewContent ?? "// Something went wrong. No preview available",
+                EditorStyles.textArea, GUILayout.ExpandHeight(true));
+            EditorGUILayout.EndScrollView();
+            GUILayout.EndVertical();
+
+            GUILayout.Space(8);
+
+            EditorGUILayout.BeginHorizontal();
+            if (GUILayout.Button("Cancel", GUILayout.Height(40))) _onClose?.Invoke();
+
+            if (GUILayout.Button("Import Script", GUILayout.Height(40)))
+                if (!string.IsNullOrEmpty(_templateName) && !string.IsNullOrEmpty(_outputPath) &&
+                    !string.IsNullOrEmpty(_namespace))
+                {
+                    ImportScript(_outputPath, _namespace);
+                    _onImport?.Invoke();
+                }
+
             EditorGUILayout.EndHorizontal();
         }
 
-        private static void ImportScript(string nameSpace)
+        private static void ImportScript(string outputPath, string nameSpace)
         {
-            var packageName = "com.akira.tools";
+            var templatePath = GetTemplatePath();
 
-            var txtPath = Path.Combine(
-                Application.dataPath,
-                "../Packages",
-                packageName,
-                "Scripts",
-                _scriptTemplateName
-            );
-
-            var outputPath = Path.Combine(
-                Application.dataPath,
-                "_Project",
-                "_Scripts",
-                "Utilities",
-                _scriptOutputName
-            );
-
-            // Read template, replace namespace, and write to output
-            if (File.Exists(txtPath))
+            if (string.IsNullOrEmpty(templatePath) || !File.Exists(templatePath))
             {
-                ImportFile.ImportTextAsScript(txtPath, outputPath, nameSpace);
-                Debug.Log($"{_scriptDisplayName} imported successfully!");
+                Debug.LogError("Script template not found for import.");
+
+                return;
             }
-            else
-            {
-                Debug.LogError($"Script template not found: {txtPath}");
-            }
+
+            ImportFile.ImportTextAsScript(templatePath, outputPath, nameSpace);
+            AssetDatabase.Refresh();
+        }
+
+        private static string GetTemplatePath()
+        {
+            return Path.Combine(Application.dataPath, "../Packages/com.akira.tools/Scripts", _templateName);
         }
     }
 }

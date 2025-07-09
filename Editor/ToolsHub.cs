@@ -30,29 +30,36 @@ namespace akira
 
     public class ToolsHub : EditorWindow
     {
+        // --- Singleton & Instance ---
         private static ToolsHub _instance;
 
+        // --- Menu/Reflection ---
         private static List<MethodInfo> _cachedMethods = new();
 
+        // --- Textures & Styles ---
         private static Texture2D _normalBg;
         private static Texture2D _hoverBg;
         private static Texture2D _activeBg;
 
+        // --- Notification fields ---
+        private static string _toolbarNotification;
+        private static double _toolbarNotificationTime;
+
+        // --- Layout & UI ---
         private readonly float _buttonHeight = 28;
         private readonly int _buttonsPerRow = 4;
-
         private readonly Color _foldoutBgColor = new(0.18f, 0.18f, 0.18f, 1f);
         private readonly Color _foldoutBorderColor = new(0.35f, 0.35f, 0.35f, 1f);
+
+        // --- Navigation/Page Stack ---
         private readonly List<PageState> _pageStack = new();
-
-
         private GUIStyle _buttonStyle;
         private GUIStyle _compactFoldoutStyle;
-
         private int _currentPageIndex = -1;
         private GUIStyle _headerStyle;
         private Texture2D _popupIcon;
 
+        // --- Menu Tree & Scroll ---
         private MenuNode _rootNode;
         private Vector2 _scrollPosition;
 
@@ -115,6 +122,16 @@ namespace akira
             DrawRecentRenames();
         }
 
+        // --- Notification API ---
+        public static void ShowNotification(string message)
+        {
+            _toolbarNotification = message;
+            _toolbarNotificationTime = EditorApplication.timeSinceStartup;
+
+            if (_instance != null)
+                _instance.Repaint();
+        }
+
         private void RefreshMenuTree()
         {
             _cachedMethods = null;
@@ -133,7 +150,32 @@ namespace akira
             EditorGUILayout.BeginHorizontal(EditorStyles.toolbar);
             DrawBackForwardButtons();
             GUILayout.Space(8);
-            GUILayout.FlexibleSpace();
+
+            // --- Notification area ---
+            if (!string.IsNullOrEmpty(_toolbarNotification))
+            {
+                var notifStyle = new GUIStyle(EditorStyles.label)
+                {
+                    normal = { textColor = Color.yellow },
+                    alignment = TextAnchor.MiddleCenter,
+                    fontStyle = FontStyle.Bold
+                };
+                GUILayout.FlexibleSpace();
+                GUILayout.Label(_toolbarNotification, notifStyle, GUILayout.ExpandWidth(true));
+                GUILayout.FlexibleSpace();
+            }
+            else
+            {
+                GUILayout.FlexibleSpace();
+            }
+
+            // --- Clear notification after 10s ---
+            if (!string.IsNullOrEmpty(_toolbarNotification) &&
+                EditorApplication.timeSinceStartup - _toolbarNotificationTime > 10)
+            {
+                _toolbarNotification = null;
+                Repaint();
+            }
 
             if (GUILayout.Button("Refresh", EditorStyles.toolbarButton, GUILayout.Width(70)))
                 RefreshMenuTree();
@@ -523,7 +565,8 @@ namespace akira
             }
         }
 
-        public static void ShowScriptImportPage(string templateName, string outputName, string displayName)
+        public static void ShowScriptImportPage(string templateName, string outputName, string displayName,
+            string menuPath = null)
         {
             if (_instance == null)
                 _instance = GetWindow<ToolsHub>("Akira Tools Hub");
@@ -532,8 +575,13 @@ namespace akira
             ScriptImportPage.Show(templateName, outputName, displayName, () =>
             {
                 _instance.RemoveScriptImportPageFromStack();
+                ShowNotification($"Script '{displayName}' imported successfully.");
                 _instance.Repaint();
-            });
+            }, () =>
+            {
+                _instance.RemoveScriptImportPageFromStack();
+                _instance.Repaint();
+            }, menuPath);
 
             _instance._pageStack.Add(new PageState
             {
@@ -553,6 +601,12 @@ namespace akira
                     if (_currentPageIndex >= _pageStack.Count)
                         _currentPageIndex = _pageStack.Count - 1;
                 }
+        }
+
+        public static void ShowFolderCustomizationPage(List<string> initialFolders, HashSet<string> nonRemovableFolders,
+            string structureName = "Type")
+        {
+            FolderCustomizationPage.Show(initialFolders, nonRemovableFolders, structureName, _instance);
         }
 
         [MenuItem("Tools/Akira Tools Hub")]
