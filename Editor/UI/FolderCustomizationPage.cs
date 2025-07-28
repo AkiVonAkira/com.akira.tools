@@ -26,6 +26,9 @@ namespace akira.UI
         private readonly Dictionary<string, bool> _folderEnabledStates = new(); // Track enabled/disabled state
         private readonly Dictionary<string, bool> _folderFoldoutStates = new(); // Track expanded/collapsed state
         private readonly HashSet<string> _nonRemovableFolders; // Required folders
+
+        // Add a protection against infinite recursion
+        private readonly HashSet<string> _processedFolders = new();
         private List<string> _availableFolders; // All possible folders
         private List<FolderStructurePreset> _availablePresets = new();
         private string _currentFolderStructure = "Type"; // "Type" or "Function"
@@ -41,9 +44,6 @@ namespace akira.UI
 
         // New fields for preset management
         private string _presetName = "";
-
-        // Add a protection against infinite recursion
-        private readonly HashSet<string> _processedFolders = new();
         private int _selectedPresetIndex = -1;
 
         // Track preset management UI state

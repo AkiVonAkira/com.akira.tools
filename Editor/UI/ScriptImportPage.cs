@@ -13,11 +13,6 @@ namespace akira.UI
         // UI constants
         private static readonly Color PreviewBackgroundColor = new(0.2f, 0.2f, 0.2f, 1f);
         private static readonly Color ButtonColor = new(0.3f, 0.6f, 0.9f, 1f);
-        private readonly string _displayName;
-        private readonly string _menuPath;
-
-        // Template data
-        private readonly string _templateName;
 
         // Assembly definition specific fields
         private readonly string[] _asmdefLocations =
@@ -29,6 +24,10 @@ namespace akira.UI
             "_Scripts/Tests/EditMode",
             "_Scripts/Tests/PlayMode"
         };
+
+        private readonly string _displayName;
+        private readonly string _menuPath;
+        private readonly string _templateName;
 
         private string _className;
 

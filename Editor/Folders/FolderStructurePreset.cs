@@ -16,7 +16,6 @@ namespace akira.Folders
         public string Description;
         public List<string> Folders = new();
         public Dictionary<string, bool> EnabledState = new();
-
         [NonSerialized] public bool IsBuiltIn;
 
         public string ToJson()
@@ -26,7 +25,6 @@ namespace akira.Folders
                 Name = Name, Description = Description, Folders = new List<string>(Folders)
             };
 
-            // Convert dictionary to serializable list
             foreach (var kvp in EnabledState)
                 serializablePreset.EnabledStates.Add(new SerializableEnabledState
                 {
@@ -48,8 +46,6 @@ namespace akira.Folders
                     Description = serializablePreset.Description,
                     Folders = serializablePreset.Folders
                 };
-
-                // Convert serializable list back to dictionary
                 foreach (var item in serializablePreset.EnabledStates) preset.EnabledState[item.Folder] = item.Enabled;
 
                 return preset;
@@ -62,7 +58,6 @@ namespace akira.Folders
             }
         }
 
-        // For JSON serialization
         [Serializable]
         public class SerializableEnabledState
         {

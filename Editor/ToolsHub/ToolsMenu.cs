@@ -10,7 +10,7 @@ namespace akira.ToolsHub
     public static class ToolsMenu
     {
         internal const string RootFolder = "_Project";
-        public static string SelectedFolderStructure = "Type"; // "Type" or "Function"
+        public static string SelectedFolderStructure = "Type";
 
         [MenuButtonItem("Setup/Folders", "Type-Based", "Create a type-based folder structure")]
         public static void CreateTypeBasedDefaultFolders()

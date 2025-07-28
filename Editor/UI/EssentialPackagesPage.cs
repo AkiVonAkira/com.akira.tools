@@ -24,14 +24,17 @@ namespace akira.UI
         private static readonly Color InstallButtonColor = new(0.3f, 0.5f, 0.9f, 1f);
         private static readonly Color HeaderColor = new(0.25f, 0.25f, 0.25f, 1f);
         private static readonly Color AddButtonColor = new(0.3f, 0.5f, 0.9f, 1f);
-        private bool _addingNewPackage;
         private readonly Dictionary<string, bool> _hasPackageUpdate = new();
-
-        // Installation state
-        private bool _isInstalling;
 
         // Package status tracking
         private readonly Dictionary<string, bool> _isPackageInstalled = new();
+        private readonly Dictionary<string, bool> _packageInstallSuccess = new();
+        private readonly Dictionary<string, float> _packageProgress = new();
+        private readonly Dictionary<string, string> _packageVersions = new();
+        private bool _addingNewPackage;
+
+        // Installation state
+        private bool _isInstalling;
         private bool _isRefreshingStatus;
 
         // Check if TextMeshPro resources are already installed
@@ -43,9 +46,6 @@ namespace akira.UI
         private string _newPackageId = "";
         private bool _newPackageIsEssential;
         private float _overallProgress;
-        private readonly Dictionary<string, bool> _packageInstallSuccess = new();
-        private readonly Dictionary<string, float> _packageProgress = new();
-        private readonly Dictionary<string, string> _packageVersions = new();
         private Vector2 _scrollPosition;
 
         // Filter/search
@@ -715,7 +715,6 @@ namespace akira.UI
                 }
                 else if (isGitPackage && Debug.isDebugBuild)
                 {
-                    // If Git package not found, log that fact only in debug builds
                     Debug.Log($"Git package not found: {package.Id}");
                 }
 
@@ -881,7 +880,7 @@ namespace akira.UI
                 new PackageEntry
                 {
                     Id = "git+https://github.com/adammyhre/Unity-Utils.git",
-                    DisplayName = "Adam's Unity Utils",
+                    DisplayName = "Unity Utility Library",
                     Description = "Collection of utility functions for Unity development.",
                     IsEssential = false,
                     IsEnabled = true

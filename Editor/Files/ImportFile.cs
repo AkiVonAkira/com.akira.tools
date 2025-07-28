@@ -14,16 +14,13 @@ namespace Editor.Files
         {
             var content = File.ReadAllText(txtPath);
 
-            // Handle different file types
             if (outputPath.EndsWith(".asmdef"))
             {
-                // For assembly definition files, replace tokens with the actual namespace
                 content = content.Replace("#ROOTNAMESPACE#", nameSpace);
                 content = content.Replace("#SCRIPTNAME#", Path.GetFileNameWithoutExtension(outputPath));
             }
             else
             {
-                // For standard C# scripts, use the namespace wrapper
                 content = content.Replace("#ROOTNAMESPACEBEGIN#", $"namespace {nameSpace}");
                 content = content.Replace("#ROOTNAMESPACEND#", "}");
                 content = content.Replace("#SCRIPTNAME#", Path.GetFileNameWithoutExtension(outputPath));

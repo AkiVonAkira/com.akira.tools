@@ -17,7 +17,6 @@ namespace Editor.Files
 
         private static readonly string[] AdobeSubstancePaths = { "Assets/Adobe/Substance3DForUnity" };
 
-        // Use persistent settings
         public static bool Enabled
         {
             get => ToolsHubSettings.Data.AssetPrefixEnabled;
@@ -28,7 +27,6 @@ namespace Editor.Files
             }
         }
 
-        // For compatibility with ToolsHub UI
         public static int RecentRenameDisplayCount
         {
             get => ToolsHubSettings.Data.RecentRenameDisplayCount;
@@ -39,7 +37,6 @@ namespace Editor.Files
             }
         }
 
-        // Static variables
         public static List<AssetRenameLogEntry> RecentRenames => RenameLogStore.Data.RecentRenames;
 
         private static void OnPostprocessAllAssets(
@@ -52,7 +49,6 @@ namespace Editor.Files
             if (!Enabled)
                 return;
 
-            // Collect folders containing SubstanceGraphSO assets
             foreach (var assetPath in importedAssets)
             {
                 var asset = AssetDatabase.LoadAssetAtPath<Object>(assetPath);
@@ -64,12 +60,8 @@ namespace Editor.Files
                 }
             }
 
-            // Only log substance folders if any were found
             if (SubstanceFolders.Count > 0) Debug.Log($"Substance folders: {string.Join(", ", SubstanceFolders)}");
-            // Only log substance folders if any were found
 
-            // Process assets, skipping those in SubstanceGraphSO folders
-            // Process assets, skipping those in SubstanceGraphSO folders
             foreach (var assetPath in importedAssets)
             {
                 var normalizedAssetPath = assetPath.Replace("\\", "/");
@@ -104,7 +96,6 @@ namespace Editor.Files
             }
             catch
             {
-                // Suppress errors from Unity's asset pipeline timing
                 return;
             }
 
@@ -145,7 +136,6 @@ namespace Editor.Files
                 asset.name = newName.Split('/').Last().Split('.').First();
                 EditorUtility.SetDirty(asset);
 
-                // Add to persistent recent renames log, now tracks GUID chain
                 RenameLogStore.AddRename(fileNameWithoutExtension + "." + fileExtension, newName, newAssetPath);
             }
         }
@@ -265,7 +255,6 @@ namespace Editor.Files
 
         private static bool IsAdobeModifiedAsset(Object asset)
         {
-            // Check for specific metadata or properties that indicate the asset was modified by Adobe
             if (asset is Material material) return material.shader.name.Contains("graph_0");
             if (asset is Texture2D texture) return texture.name.Contains("graph_0");
 

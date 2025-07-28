@@ -28,9 +28,6 @@ namespace Editor.Files
 
     public static class RenameLogStore
     {
-        // The rename log is saved in:
-        // Saves/ToolsHubRenameLog.json (relative to project root)
-
         private static readonly string LogPath = Path.Combine(
             Application.dataPath, "../Saves/ToolsHubRenameLog.json");
 

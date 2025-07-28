@@ -29,14 +29,8 @@ namespace akira.ToolsHub
     {
         public bool AssetPrefixEnabled = true;
         public int RecentRenameDisplayCount = 5;
-
-        // Use a serializable list for foldout states
         public List<FoldoutStateEntry> FoldoutStatesList = new();
-
-        // Package management
         public List<PackageEntry> PackagesList = new();
-
-        // Not serialized, runtime only
         [NonSerialized] private Dictionary<string, bool> _foldoutStatesDict;
         [NonSerialized] private Dictionary<string, PackageEntry> _packagesDict;
 
@@ -59,8 +53,6 @@ namespace akira.ToolsHub
         {
             var dict = GetFoldoutStatesDict();
             dict[key] = value;
-
-            // Update or add in the list
             var entry = FoldoutStatesList.Find(e => e.Key == key);
 
             if (entry != null)
@@ -69,7 +61,6 @@ namespace akira.ToolsHub
                 FoldoutStatesList.Add(new FoldoutStateEntry { Key = key, Value = value });
         }
 
-        // Package management methods
         public Dictionary<string, PackageEntry> GetPackagesDict()
         {
             if (_packagesDict == null)
@@ -99,8 +90,6 @@ namespace akira.ToolsHub
         {
             var dict = GetPackagesDict();
             dict[package.Id] = package;
-
-            // Update in the list
             var index = PackagesList.FindIndex(p => p.Id == package.Id);
 
             if (index >= 0)
@@ -115,16 +104,12 @@ namespace akira.ToolsHub
 
             if (dict.ContainsKey(packageId))
                 dict.Remove(packageId);
-
             PackagesList.RemoveAll(p => p.Id == packageId);
         }
     }
 
     public static class ToolsHubSettings
     {
-        // Settings are saved in:
-        // Saves/ToolsHubSettings.json (relative to project root)
-
         private static readonly string SettingsPath = Path.Combine(
             Application.dataPath, "../Saves/ToolsHubSettings.json");
 
@@ -157,7 +142,6 @@ namespace akira.ToolsHub
             Save();
         }
 
-        // Package management
         public static PackageEntry GetPackage(string packageId)
         {
             return Data.GetPackage(packageId);
@@ -200,8 +184,6 @@ namespace akira.ToolsHub
                 {
                     var json = File.ReadAllText(SettingsPath);
                     _data = JsonUtility.FromJson<ToolsHubSettingsData>(json) ?? new ToolsHubSettingsData();
-
-                    // Validate package entries to avoid problematic ones
                     ValidateSettings();
                 }
                 catch (Exception ex)
@@ -214,20 +196,15 @@ namespace akira.ToolsHub
                 _data = new ToolsHubSettingsData();
         }
 
-        // Add a validation method to ensure settings are always clean
         private static void ValidateSettings()
         {
-            // Don't use Package Manager APIs here - just basic cleanup
             if (_data?.PackagesList == null) return;
-
             var needsSave = false;
 
-            // Find and remove any problematic TextMeshPro entries
             for (var i = _data.PackagesList.Count - 1; i >= 0; i--)
             {
                 var package = _data.PackagesList[i];
 
-                // Check for problematic entries
                 if (package.Id == "com.unity.textmeshpro" ||
                     (package.Id != "TextMeshPro" && package.Id.Contains("textmeshpro")))
                 {
@@ -236,7 +213,6 @@ namespace akira.ToolsHub
                 }
             }
 
-            // Ensure proper TextMeshPro entry exists
             var hasTmpEntry = _data.PackagesList.Any(p => p.Id == "TextMeshPro" && p.DisplayName == "TextMeshPro");
 
             if (!hasTmpEntry)
@@ -253,7 +229,6 @@ namespace akira.ToolsHub
                 needsSave = true;
             }
 
-            // Save changes if needed
             if (needsSave) Save();
         }
 

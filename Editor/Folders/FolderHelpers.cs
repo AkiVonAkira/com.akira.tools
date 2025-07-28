@@ -15,7 +15,6 @@ namespace akira.Folders
             {
                 var path = Path.Combine(fullPath, folder.Replace('/', Path.DirectorySeparatorChar));
                 Directory.CreateDirectory(path);
-                //Debug.Log($"Created folder: {path}");
             }
 
             CreateAssemblyDefinition(rootPath);
@@ -40,12 +39,10 @@ namespace akira.Folders
                 "_Project.asmdef"
             );
 
-            // Create _Scripts folder if it doesn't exist
             var scriptsFolder = Path.Combine(Application.dataPath, rootPath, "_Scripts");
 
             if (!Directory.Exists(scriptsFolder)) Directory.CreateDirectory(scriptsFolder);
 
-            // Only create asmdef if it doesn't exist
             if (!File.Exists(outputPath))
             {
                 File.Copy(txtPath, outputPath);
@@ -58,14 +55,11 @@ namespace akira.Folders
             var sourcePath = $"Assets/{folderName}";
             var destinationPath = $"Assets/{newParent}/{folderName}";
 
-            // Check if the source path exists
             if (!IsValidFolder(sourcePath))
                 return;
 
-            // If destination exists, merge folders instead of skipping
             if (IsValidFolder(destinationPath))
             {
-                // Get all assets in the source folder
                 var assets = FindAssets("", new[] { sourcePath });
 
                 foreach (var assetGuid in assets)
@@ -75,28 +69,23 @@ namespace akira.Folders
                     if (string.IsNullOrEmpty(assetPath))
                         continue;
 
-                    // Calculate the new path in the destination folder
                     var relativePath = assetPath.Substring(sourcePath.Length);
                     var newPath = destinationPath + relativePath;
 
-                    // Create any needed subdirectories
                     var dirName = Path.GetDirectoryName(newPath);
 
                     if (!string.IsNullOrEmpty(dirName) && !IsValidFolder(dirName))
                         CreateFolder(Path.GetDirectoryName(dirName), Path.GetFileName(dirName));
 
-                    // Copy the asset to the new location
                     CopyAsset(assetPath, newPath);
                 }
 
-                // Delete the source folder after copying all assets
                 DeleteAsset(sourcePath);
                 Debug.Log($"Merged {folderName} into {destinationPath}");
 
                 return;
             }
 
-            // Normal move if destination does not exist
             var error = MoveAsset(sourcePath, destinationPath);
 
             if (!string.IsNullOrEmpty(error))
