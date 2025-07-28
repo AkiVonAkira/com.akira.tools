@@ -1,3 +1,10 @@
+# [1.10.0](https://github.com/AkiVonAkira/com.akira.tools/compare/v1.9.0...v1.10.0) (2025-07-28)
+
+
+### Features
+
+* ToolsHubManager | Improved: Folder Cusomization, Script Importing, Essential Package Manager ([3ce0bdc](https://github.com/AkiVonAkira/com.akira.tools/commit/3ce0bdc8454c3815ab1d8537f9d59cd28abd96db))
+
 # [1.9.0](https://github.com/AkiVonAkira/com.akira.tools/compare/v1.8.1...v1.9.0) (2025-07-09)
 
 

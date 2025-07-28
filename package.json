@@ -1,6 +1,6 @@
 {
   "name": "com.akira.tools",
-  "version": "1.9.0",
+  "version": "1.10.0",
   "displayName": "Akira's Tools",
   "description": "A collection of useful tools for Unity development",
   "unity": "6000.0",
