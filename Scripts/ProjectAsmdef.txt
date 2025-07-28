@@ -1,7 +1,14 @@
-{
-    "name": "_Project",
-    "rootNamespace": "_Project",
-    "references": [],
+﻿{
+    "name": "#SCRIPTNAME#",
+    "rootNamespace": "#ROOTNAMESPACE#",
+    "references": [
+        "Unity.Collections",
+        "Unity.Mathematics",
+        "UnityEngine.UI",
+        "Unity.InputSystem",
+        "Unity.TextMeshPro",
+        "Unity.Cinemachine"
+    ],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,

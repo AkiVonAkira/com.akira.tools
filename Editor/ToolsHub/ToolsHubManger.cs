@@ -1,6 +1,7 @@
 ﻿#if UNITY_EDITOR
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using akira.UI;
@@ -9,7 +10,7 @@ using UnityEditor;
 using UnityEngine;
 using Object = UnityEngine.Object;
 
-namespace akira
+namespace akira.ToolsHub
 {
     [AttributeUsage(AttributeTargets.Method)]
     public class MenuButtonItemAttribute : Attribute
@@ -28,10 +29,17 @@ namespace akira
         }
     }
 
-    public class ToolsHub : EditorWindow
+    public enum PageOperationResult
+    {
+        Success,
+        Failure,
+        Cancelled
+    }
+
+    public class ToolsHubManger : EditorWindow
     {
         // --- Singleton & Instance ---
-        private static ToolsHub _instance;
+        private static ToolsHubManger _instance;
 
         // --- Menu/Reflection ---
         private static List<MethodInfo> _cachedMethods = new();
@@ -85,10 +93,30 @@ namespace akira
             if (_currentPageIndex > -1 && _currentPageIndex < _pageStack.Count)
             {
                 var page = _pageStack[_currentPageIndex];
+
+                // Reset the PageLayout state with the current page title
+                PageLayout.ResetState(page.Title);
+
+                // Only draw the title if PageLayout hasn't drawn a header
                 GUILayout.Space(8);
-                GUILayout.Label(page.Title, _headerStyle);
-                GUILayout.Space(8);
-                page.DrawPage?.Invoke();
+
+                if (!string.IsNullOrEmpty(page.Title))
+                {
+                    page.DrawPage?.Invoke();
+
+                    // If page didn't draw a header via PageLayout, draw the default one
+                    if (!PageLayout.HasHeaderBeenDrawn)
+                    {
+                        GUILayout.Label(page.Title, _headerStyle);
+                        GUILayout.Space(8);
+                    }
+                }
+                else
+                {
+                    GUILayout.Label("Unnamed Page", _headerStyle);
+                    GUILayout.Space(8);
+                    page.DrawPage?.Invoke();
+                }
 
                 return;
             }
@@ -122,9 +150,94 @@ namespace akira
             DrawRecentRenames();
         }
 
-        // --- Notification API ---
-        public static void ShowNotification(string message)
+        // --- Standardized Page Management ---
+
+        // Unified page display method with optional result callback
+        public static void ShowPage(string title, Action drawMethod, Action<PageOperationResult> onResult = null)
         {
+            if (_instance == null)
+                _instance = GetWindow<ToolsHubManger>("Akira Tools Hub");
+
+            // Reset the PageLayout state with the new page title
+            PageLayout.ResetState(title);
+
+            // If already on a page, remove any pages after the current one
+            if (_instance._currentPageIndex < _instance._pageStack.Count - 1)
+                _instance._pageStack.RemoveRange(_instance._currentPageIndex + 1,
+                    _instance._pageStack.Count - _instance._currentPageIndex - 1);
+
+            // Add the new page
+            _instance._pageStack.Add(new PageState { Title = title, DrawPage = drawMethod, OnResult = onResult });
+
+            _instance._currentPageIndex = _instance._pageStack.Count - 1;
+            _instance.Repaint();
+        }
+
+        // Close the current page with a result
+        public static void ClosePage(PageOperationResult result)
+        {
+            if (_instance == null || _instance._currentPageIndex < 0 || _instance._pageStack.Count == 0)
+                return;
+
+            var page = _instance._pageStack[_instance._currentPageIndex];
+            page.OnResult?.Invoke(result);
+
+            // Remove the page
+            _instance._pageStack.RemoveAt(_instance._currentPageIndex);
+            _instance._currentPageIndex = _instance._pageStack.Count - 1;
+            _instance.Repaint();
+        }
+
+        // Close multiple pages
+        public static void ClosePages(int count, PageOperationResult result)
+        {
+            if (_instance == null || _instance._pageStack.Count == 0) return;
+
+            for (var i = 0; i < count && _instance._pageStack.Count > 0; i++)
+                if (_instance._currentPageIndex >= 0 && _instance._currentPageIndex < _instance._pageStack.Count)
+                {
+                    var page = _instance._pageStack[_instance._currentPageIndex];
+                    page.OnResult?.Invoke(result);
+                    _instance._pageStack.RemoveAt(_instance._currentPageIndex);
+                    _instance._currentPageIndex--;
+                }
+
+            _instance._currentPageIndex =
+                Math.Max(0, Math.Min(_instance._pageStack.Count - 1, _instance._currentPageIndex));
+
+            if (_instance._pageStack.Count == 0)
+                _instance._currentPageIndex = -1;
+
+            _instance.Repaint();
+        }
+
+        // --- Notification API ---
+        // allow types, like log, warning, error, etc.
+        public static void ShowNotification(string message, string type = "info")
+        {
+            if (_instance == null)
+                _instance = GetWindow<ToolsHubManger>("Akira Tools Hub");
+
+            switch (type.ToLower())
+            {
+                case "success":
+                    message = $"<color=green>{message}</color>";
+
+                    break;
+                case "warning":
+                    message = $"<color=yellow>{message}</color>";
+
+                    break;
+                case "error":
+                    message = $"<color=red>{message}</color>";
+
+                    break;
+                default:
+                    message = $"<color=white>{message}</color>";
+
+                    break;
+            }
+
             _toolbarNotification = message;
             _toolbarNotificationTime = EditorApplication.timeSinceStartup;
 
@@ -247,16 +360,43 @@ namespace akira
                     }
 
                     GUILayout.Label(icon, GUILayout.Width(16), GUILayout.Height(16));
-                    GUILayout.Label($"{entry.OldName}  →  {entry.NewName}", GUILayout.ExpandWidth(true));
+
+                    // Check if the asset still exists
+                    var currentPath = RenameLogStore.GetCurrentAssetPathForRename(entry);
+                    var fileExists = !string.IsNullOrEmpty(currentPath) && File.Exists(currentPath);
+
+                    // Create styles for displaying deleted assets
+                    var textStyle = new GUIStyle(EditorStyles.label);
+
+                    if (!fileExists)
+                    {
+                        textStyle.normal.textColor = new Color(0.9f, 0.3f, 0.3f); // Red text
+                        textStyle.fontStyle = FontStyle.Italic;
+
+                        // Add strikethrough effect
+                        textStyle.richText = true;
+
+                        GUILayout.Label($"<s>{entry.OldName}  →  {entry.NewName}</s>", textStyle,
+                            GUILayout.ExpandWidth(true));
+                    }
+                    else
+                    {
+                        GUILayout.Label($"{entry.OldName}  →  {entry.NewName}", textStyle, GUILayout.ExpandWidth(true));
+                    }
+
+                    // Disable ping button if file doesn't exist
+                    EditorGUI.BeginDisabledGroup(!fileExists);
 
                     if (GUILayout.Button("Ping", GUILayout.Width(36)))
-                    {
-                        var currentPath = RenameLogStore.GetCurrentAssetPathForRename(entry);
-                        var obj = AssetDatabase.LoadAssetAtPath<Object>(currentPath);
+                        if (fileExists)
+                        {
+                            var obj = AssetDatabase.LoadAssetAtPath<Object>(currentPath);
 
-                        if (obj != null)
-                            EditorGUIUtility.PingObject(obj);
-                    }
+                            if (obj != null)
+                                EditorGUIUtility.PingObject(obj);
+                        }
+
+                    EditorGUI.EndDisabledGroup();
 
                     EditorGUILayout.EndHorizontal();
                 }
@@ -323,11 +463,36 @@ namespace akira
 
         private Action TryGetCustomPageDraw(MethodInfo method)
         {
-            var pageMethod = method.DeclaringType?.GetMethod(method.Name + "_Page",
-                BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+            // First check for a method with the same name as the attribute's Draw method
+            var typeName = method.DeclaringType?.Name;
 
-            if (pageMethod != null && pageMethod.ReturnType == typeof(void) && pageMethod.GetParameters().Length == 0)
-                return () => pageMethod.Invoke(null, null);
+            // Try to find matching draw method in page classes
+            if (typeName != null)
+            {
+                // Check if the declaring type has a static Draw method
+                var drawMethod = method.DeclaringType?.GetMethod("Draw",
+                    BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+
+                if (drawMethod != null && drawMethod.ReturnType == typeof(void) &&
+                    drawMethod.GetParameters().Length == 0)
+                    return () => drawMethod.Invoke(null, null);
+
+                // Try looking for a _Page suffix method as before
+                var pageMethod = method.DeclaringType?.GetMethod(method.Name + "_Page",
+                    BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+
+                if (pageMethod != null && pageMethod.ReturnType == typeof(void) &&
+                    pageMethod.GetParameters().Length == 0)
+                    return () => pageMethod.Invoke(null, null);
+
+                // Try looking for a DrawFolderCustomizationPage method for backward compatibility
+                var folderCustomizationMethod = method.DeclaringType?.GetMethod("DrawFolderCustomizationPage",
+                    BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+
+                if (folderCustomizationMethod != null && folderCustomizationMethod.ReturnType == typeof(void) &&
+                    folderCustomizationMethod.GetParameters().Length == 0)
+                    return () => folderCustomizationMethod.Invoke(null, null);
+            }
 
             return null;
         }
@@ -344,13 +509,10 @@ namespace akira
                 _activeBg = CreateColorTexture(new Color(0.18f, 0.18f, 0.18f));
 
             if (_headerStyle == null)
-            {
                 _headerStyle = new GUIStyle(EditorStyles.boldLabel)
                 {
-                    fontSize = 16, alignment = TextAnchor.MiddleCenter
+                    fontSize = 16, alignment = TextAnchor.MiddleCenter, normal = { textColor = Color.white }
                 };
-                _headerStyle.normal.textColor = Color.white;
-            }
 
             if (_buttonStyle == null)
             {
@@ -382,15 +544,15 @@ namespace akira
                     fontStyle = FontStyle.Bold,
                     alignment = TextAnchor.MiddleLeft,
                     padding = new RectOffset(6, 2, 2, 2),
-                    margin = new RectOffset(0, 0, 0, 0)
+                    margin = new RectOffset(0, 0, 0, 0),
+                    normal = { textColor = Color.white },
+                    focused = { textColor = Color.white }
                 };
-                _compactFoldoutStyle.normal.textColor = Color.white;
-                _compactFoldoutStyle.focused.textColor = Color.white;
             }
 
             if (_popupIcon == null)
             {
-                var assetPath = "Packages/com.akira.tools/Editor/popup.png";
+                var assetPath = "Packages/com.akira.tools/Assets/popup.png";
                 _popupIcon = AssetDatabase.LoadAssetAtPath<Texture2D>(assetPath);
             }
         }
@@ -565,58 +727,7 @@ namespace akira
             }
         }
 
-        public static void ShowScriptImportPage(string templateName, string outputName, string displayName,
-            string menuPath = null)
-        {
-            if (_instance == null)
-                _instance = GetWindow<ToolsHub>("Akira Tools Hub");
-            _instance.RemoveScriptImportPageFromStack();
-
-            ScriptImportPage.Show(templateName, outputName, displayName, () =>
-            {
-                _instance.RemoveScriptImportPageFromStack();
-                ShowNotification($"Script '{displayName}' imported successfully.");
-                _instance.Repaint();
-            }, () =>
-            {
-                _instance.RemoveScriptImportPageFromStack();
-                _instance.Repaint();
-            }, menuPath);
-
-            _instance._pageStack.Add(new PageState
-            {
-                Title = $"Import {displayName} Script", DrawPage = ScriptImportPage.Draw
-            });
-            _instance._currentPageIndex = _instance._pageStack.Count - 1;
-            _instance.Repaint();
-        }
-
-        private void RemoveScriptImportPageFromStack()
-        {
-            for (var i = _pageStack.Count - 1; i >= 0; i--)
-                if (_pageStack[i].DrawPage == ScriptImportPage.Draw)
-                {
-                    _pageStack.RemoveAt(i);
-
-                    if (_currentPageIndex >= _pageStack.Count)
-                        _currentPageIndex = _pageStack.Count - 1;
-                }
-        }
-
-        public static void ShowFolderCustomizationPage(List<string> initialFolders, HashSet<string> nonRemovableFolders,
-            string structureName = "Type")
-        {
-            FolderCustomizationPage.Show(initialFolders, nonRemovableFolders, structureName, _instance);
-        }
-
-        [MenuItem("Tools/Akira Tools Hub")]
-        public static void ShowWindow()
-        {
-            var window = GetWindow<ToolsHub>("Akira Tools Hub");
-            window.minSize = new Vector2(450, 350);
-            _instance = window;
-        }
-
+        // --- Utility Methods ---
         private static Texture2D CreateColorTexture(Color color)
         {
             var tex = new Texture2D(1, 1, TextureFormat.RGBA32, false) { hideFlags = HideFlags.HideAndDontSave };
@@ -626,9 +737,18 @@ namespace akira
             return tex;
         }
 
+        [MenuItem("Tools/Akira Tools Hub")]
+        public static void ShowWindow()
+        {
+            var window = GetWindow<ToolsHubManger>("Akira Tools Hub");
+            window.minSize = new Vector2(600, 900);
+            _instance = window;
+        }
+
         private class PageState
         {
             public Action DrawPage;
+            public Action<PageOperationResult> OnResult;
             public string Title;
         }
 
