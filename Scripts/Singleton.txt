@@ -14,12 +14,23 @@ using UnityEngine;
     {
         private static T _instance;
 
+        public static bool HasInstance => _instance != null;
+        public static T TryGetInstance() => HasInstance ? _instance : null;
+
         public static T Instance
         {
             get
             {
                 if (_instance == null)
-                    Debug.LogError("Instance of " + typeof(T).Name + " is null");
+                {
+                    _instance = FindAnyObjectByType<T>();
+                    if (_instance == null)
+                    {
+                        var go = new GameObject(typeof(T).Name + " Auto-Generated");
+                        _instance = go.AddComponent<T>();
+                        Debug.Log($"Auto-generated instance of {typeof(T).Name}");
+                    }
+                }
 
                 return _instance;
             }
@@ -27,8 +38,20 @@ using UnityEngine;
             private set => _instance = value;
         }
 
+        /// <summary>
+        /// Initialize the singleton.
+        /// When overriding in derived classes, always call base.Awake() first
+        /// to ensure proper singleton initialization.
+        /// </summary>
         protected virtual void Awake()
         {
+            InitializeSingleton();
+        }
+
+        protected virtual void InitializeSingleton()
+        {
+            if (!Application.isPlaying) return;
+
             if (Instance != null && Instance != this)
             {
                 Destroy(gameObject);
@@ -51,15 +74,22 @@ using UnityEngine;
     /// </summary>
     public abstract class Singleton<T> : StaticInstance<T> where T : MonoBehaviour
     {
-        protected override void Awake()
+        /// <summary>
+        /// Initialize the singleton.
+        /// When overriding in derived classes, always call base.Awake() first
+        /// to ensure proper singleton initialization.
+        /// </summary>
+        protected override void InitializeSingleton()
         {
-            if (Instance != null)
+            if (!Application.isPlaying) return;
+            
+            if (Instance != null && Instance != this)
             {
                 Destroy(gameObject);
                 return;
             }
 
-            base.Awake();
+            base.InitializeSingleton();
         }
     }
 
@@ -70,10 +100,65 @@ using UnityEngine;
     /// </summary>
     public abstract class PersistentSingleton<T> : Singleton<T> where T : MonoBehaviour
     {
-        protected override void Awake()
+        /// <summary>
+        /// When true, the GameObject will be unparented during initialization
+        /// </summary>
+        public bool AutoUnparentOnAwake = true;
+
+        /// <summary>
+        /// Initialize the persistent singleton.
+        /// When overriding in derived classes, always call base.Awake() first
+        /// to ensure proper singleton initialization.
+        /// </summary>
+        protected override void InitializeSingleton()
         {
-            base.Awake();
+            if (!Application.isPlaying) return;
+            
+            if (AutoUnparentOnAwake)
+            {
+                transform.SetParent(null);
+            }
+
+            base.InitializeSingleton();
             DontDestroyOnLoad(gameObject);
+        }
+    }
+
+    /// <summary>
+    /// Regulator singleton will destroy any older components of the same type it finds on awake
+    /// Ensures that only the most recently created instance survives
+    /// </summary>
+    public abstract class RegulatorSingleton<T> : StaticInstance<T> where T : MonoBehaviour
+    {
+        public float InitializationTime { get; private set; }
+
+        /// <summary>
+        /// Initialize the regulator singleton.
+        /// When overriding in derived classes, always call base.Awake() first
+        /// to ensure proper singleton initialization.
+        /// </summary>
+        protected override void InitializeSingleton()
+        {
+            if (!Application.isPlaying) return;
+
+            InitializationTime = Time.time;
+            DontDestroyOnLoad(gameObject);
+
+            // Find and destroy older instances
+            T[] allInstances = FindObjectsByType<T>(FindObjectsSortMode.None);
+            foreach (T found in allInstances)
+            {
+                if (found != this)
+                {
+                    var regulator = found.GetComponent<RegulatorSingleton<T>>();
+                    if (regulator != null && regulator.InitializationTime < InitializationTime)
+                    {
+                        Destroy(found.gameObject);
+                    }
+                }
+            }
+
+            base.InitializeSingleton();
         }
     }
 
@@ -85,10 +170,44 @@ using UnityEngine;
     /// </summary>
     public abstract class NetworkSingleton<T> : NetworkBehaviour where T : NetworkBehaviour
     {
-        public static T Instance { get; private set; }
+        private static T _instance;
+        
+        public static bool HasInstance => _instance != null;
+        public static T TryGetInstance() => HasInstance ? _instance : null;
+        
+        public static T Instance 
+        { 
+            get
+            {
+                if (_instance == null)
+                {
+                    _instance = FindAnyObjectByType<T>();
+                    if (_instance == null)
+                    {
+                        var go = new GameObject(typeof(T).Name + " Auto-Generated");
+                        _instance = go.AddComponent<T>();
+                        Debug.Log($"Auto-generated network instance of {typeof(T).Name}");
+                    }
+                }
+                return _instance;
+            }
+            private set => _instance = value;
+        }
 
+        /// <summary>
+        /// Initialize the network singleton.
+        /// When overriding in derived classes, always call base.Awake() first
+        /// to ensure proper singleton initialization.
+        /// </summary>
         protected virtual void Awake()
         {
+            InitializeSingleton();
+        }
+
+        protected virtual void InitializeSingleton()
+        {
+            if (!Application.isPlaying) return;
+
             if (Instance != null && Instance != this)
             {
                 Destroy(gameObject);
