@@ -1,36 +1,40 @@
 #if UNITY_EDITOR
 using System.Threading.Tasks;
+using akira.ToolsHub;
 using UnityEditor;
-using UnityEditor.PackageManager;
-using UnityEngine;
 
 namespace akira.Packages
 {
     public static class PackageInstaller
     {
-        public static async Task<bool> InstallUnityPackage(string packageName)
+        // Delegates to the central PackageManager to avoid duplicated logic
+        public static Task<bool> InstallUnityPackage(string packageName)
         {
-            var request = Client.Add(packageName);
             var tcs = new TaskCompletionSource<bool>();
 
-            EditorApplication.update += CheckProgress;
-
-            void CheckProgress()
+            void OnComplete(string id, bool success)
             {
-                if (!request.IsCompleted) return;
-
-                var success = request.Status == StatusCode.Success;
-
-                if (success)
-                    Debug.Log($"Package {packageName} installed successfully.");
-                else
-                    Debug.LogError($"Failed to install package {packageName}. Error: {request.Error.message}");
-
-                EditorApplication.update -= CheckProgress;
-                tcs.SetResult(success);
+                if (id != packageName) return;
+                PackageManager.OnPackageInstallComplete -= OnComplete;
+                PackageManager.OnPackageInstallError -= OnError;
+                tcs.TrySetResult(success);
             }
 
-            return await tcs.Task;
+            void OnError(string id)
+            {
+                if (id != packageName) return;
+                PackageManager.OnPackageInstallComplete -= OnComplete;
+                PackageManager.OnPackageInstallError -= OnError;
+                tcs.TrySetResult(false);
+            }
+
+            PackageManager.OnPackageInstallComplete += OnComplete;
+            PackageManager.OnPackageInstallError += OnError;
+
+            // Kick off install on main thread
+            EditorApplication.delayCall += () => PackageManager.InstallPackage(packageName);
+
+            return tcs.Task;
         }
     }
 }

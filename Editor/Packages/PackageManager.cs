@@ -37,71 +37,26 @@ namespace akira.Packages
         public static event Action<string> OnPackageInstallError;
         public static event Action OnAllPackagesInstallComplete;
 
-        // Helper methods for Git package ID normalization
-        private static string NormalizePackageId(string packageId)
+        // Try to resolve an installed package info by flexible ID matching
+        private static bool TryFindInstalledPackageInfo(string packageId, out PackageInfo info)
         {
-            if (string.IsNullOrEmpty(packageId))
-                return packageId;
+            info = null;
+            if (_installedPackagesCache == null) return false;
 
-            // If it's a Git package, extract just the repo name without the git+ prefix
-            if (packageId.StartsWith("git+"))
+            // Direct lookup
+            if (_installedPackagesCache.TryGetValue(packageId, out var direct))
             {
-                // Extract the repository name from the URL
-                var repoUrl = packageId.Substring(4); // Remove "git+" prefix
-
-                // Get the last part of the URL (the repo name)
-                var urlParts = repoUrl.Split('/');
-
-                if (urlParts.Length > 0)
-                {
-                    // Extract repository name and remove .git extension if present
-                    var repoName = urlParts[urlParts.Length - 1].Replace(".git", "");
-
-                    // Check if the repository name is empty
-                    if (!string.IsNullOrEmpty(repoName))
-                        return repoName;
-                }
-            }
-
-            return packageId;
-        }
-
-        private static bool IsPackageIdMatch(string packageId, PackageInfo installedPackage)
-        {
-            if (string.IsNullOrEmpty(packageId) || installedPackage == null)
-                return false;
-
-            // Direct match
-            if (packageId == installedPackage.name)
+                info = direct;
                 return true;
-
-            // For Git packages, try to match the repository name
-            if (packageId.StartsWith("git+"))
-            {
-                var normalizedId = NormalizePackageId(packageId);
-
-                // Try matching with just the normalized ID
-                if (normalizedId == installedPackage.name)
-                    return true;
-
-                // Also match where normalized ID is contained in the installed package ID
-                if (installedPackage.packageId != null &&
-                    (installedPackage.packageId.Contains(normalizedId) ||
-                     installedPackage.packageId.Contains(packageId.Substring(4)))) // Without git+ prefix
-                    return true;
-
-                // Extract repo name from URL and check if it matches the package name
-                if (packageId.Contains("/"))
-                {
-                    var parts = packageId.Substring(4).Split('/'); // Remove git+ prefix
-                    var repoName = parts[parts.Length - 1].Replace(".git", "");
-
-                    if (repoName.Equals(installedPackage.name, StringComparison.OrdinalIgnoreCase) ||
-                        (installedPackage.name.Contains(".") &&
-                         installedPackage.name.EndsWith(repoName, StringComparison.OrdinalIgnoreCase)))
-                        return true;
-                }
             }
+
+            // Git/URL or other forms: iterate values and use matching
+            foreach (var pkg in _installedPackagesCache.Values)
+                if (PackageIdUtils.IsPackageIdMatch(packageId, pkg))
+                {
+                    info = pkg;
+                    return true;
+                }
 
             return false;
         }
@@ -115,7 +70,6 @@ namespace akira.Packages
             if (totalCount == 0)
             {
                 OnAllPackagesInstallComplete?.Invoke();
-
                 return;
             }
 
@@ -141,7 +95,6 @@ namespace akira.Packages
                 if (!_processRequests)
                 {
                     EditorApplication.update -= CheckPackageInstallProgress;
-
                     return;
                 }
 
@@ -170,8 +123,8 @@ namespace akira.Packages
 
                         if (!success && request.Error != null)
                         {
-                            ToolsHubManger.ShowNotification(
-                                $"Failed to install package {packageId}: {request.Error.message}", "error");
+                            var label = GetPackageNameFromId(packageId, request.Result);
+                            ToolsHubManager.ShowNotification($"Failed to install {label}: {request.Error.message}", "error");
                             Debug.LogError($"Failed to install package {packageId}: {request.Error.message}");
                         }
                     }
@@ -209,12 +162,14 @@ namespace akira.Packages
             try
             {
                 // Create the request on the main thread
-                var request = Client.Add(packageId);
+                var addArg = PackageIdUtils.NormalizeForAdd(packageId);
+                var request = Client.Add(addArg);
                 _activeAddRequests[packageId] = request;
             }
             catch (Exception ex)
             {
-                ToolsHubManger.ShowNotification($"Error adding package {packageId}", "error");
+                var label = GetPackageNameFromId(packageId);
+                ToolsHubManager.ShowNotification($"Error adding {label}", "error");
                 Debug.LogError($"Error creating add request for {packageId}: {ex.Message}");
                 OnPackageInstallError?.Invoke(packageId);
             }
@@ -227,12 +182,15 @@ namespace akira.Packages
                 return;
 
             progressCallback?.Invoke(0.1f);
+            // Emit UI progress event for consistency with batch installs
+            OnPackageInstallProgress?.Invoke(packageId, 0f);
             _processRequests = true;
 
             try
             {
                 // Create the request on the main thread
-                var request = Client.Add(packageId);
+                var addArg = PackageIdUtils.NormalizeForAdd(packageId);
+                var request = Client.Add(addArg);
                 _activeAddRequests[packageId] = request;
 
                 // Set up a callback to check progress
@@ -243,7 +201,6 @@ namespace akira.Packages
                     if (!_processRequests)
                     {
                         EditorApplication.update -= CheckProgress;
-
                         return;
                     }
 
@@ -252,52 +209,87 @@ namespace akira.Packages
                         var success = request.Status == StatusCode.Success;
 
                         progressCallback?.Invoke(1f);
+                        OnPackageInstallProgress?.Invoke(packageId, 1f);
                         OnPackageInstallComplete?.Invoke(packageId, success);
 
+                        var label = GetPackageNameFromId(packageId, request.Result);
                         if (success)
                         {
-                            ToolsHubManger.ShowNotification($"Package {packageId} installed successfully.", "success");
+                            ToolsHubManager.ShowNotification($"Installed {label}.", "success");
                         }
                         else if (request.Error != null)
                         {
-                            ToolsHubManger.ShowNotification($"Failed to install package {packageId}", "error");
+                            ToolsHubManager.ShowNotification($"Failed to install {label}", "error");
                             Debug.LogError($"Failed to install package {packageId}: {request.Error.message}");
                             OnPackageInstallError?.Invoke(packageId);
                         }
 
                         _activeAddRequests.Remove(packageId);
                         RefreshPackageCache();
+
+                        // Signal overall completion for single install to allow UI to clear
+                        OnAllPackagesInstallComplete?.Invoke();
+
                         EditorApplication.update -= CheckProgress;
                     }
                     else
                     {
+                        // Mid-progress updates to move UI from 0%
                         progressCallback?.Invoke(0.5f);
+                        OnPackageInstallProgress?.Invoke(packageId, 0.5f);
                     }
                 }
             }
             catch (Exception ex)
             {
-                ToolsHubManger.ShowNotification($"Error installing package {packageId}", "error");
+                var label = GetPackageNameFromId(packageId);
+                ToolsHubManager.ShowNotification($"Error installing {label}", "error");
                 Debug.LogError($"Error installing package {packageId}: {ex.Message}");
                 OnPackageInstallError?.Invoke(packageId);
             }
         }
 
         // Remove a package
-        public static void RemovePackage(string packageId, Action<bool> onComplete = null)
+        public static async void RemovePackage(string packageId, Action<bool> onComplete = null)
         {
             if (string.IsNullOrEmpty(packageId))
             {
                 onComplete?.Invoke(false);
-
                 return;
             }
 
             try
             {
+                // Resolve to installed package name for Git/URL inputs
+                string idForRemoval = packageId;
+                if (PackageIdUtils.IsGitLike(packageId))
+                {
+                    await RefreshPackageCacheIfNeeded();
+                    if (_installedPackagesCache != null)
+                    {
+                        foreach (var pkg in _installedPackagesCache.Values)
+                        {
+                            if (PackageIdUtils.IsPackageIdMatch(packageId, pkg))
+                            {
+                                idForRemoval = pkg.name; // must be canonical name for removal
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                // If still not a canonical name (heuristic), try normalization fallback
+                if (!idForRemoval.Contains('.'))
+                {
+                    // Not a typical com.* name; attempt to use installed cache lookup again
+                    await RefreshPackageCacheIfNeeded();
+                    if (_installedPackagesCache != null && _installedPackagesCache.TryGetValue(idForRemoval, out var info))
+                        idForRemoval = info.name;
+                }
+
                 // Create the request on the main thread
-                var request = Client.Remove(packageId);
-                _activeRemoveRequests[packageId] = request;
+                var request = Client.Remove(idForRemoval);
+                _activeRemoveRequests[idForRemoval] = request;
 
                 // Set up a callback to check progress
                 EditorApplication.update += CheckProgress;
@@ -308,17 +300,18 @@ namespace akira.Packages
                     {
                         var success = request.Status == StatusCode.Success;
 
+                        var label = GetPackageNameFromId(idForRemoval);
                         if (success)
                         {
-                            ToolsHubManger.ShowNotification($"Package {packageId} removed successfully.", "success");
+                            ToolsHubManager.ShowNotification($"Removed {label}.", "success");
                         }
                         else if (request.Error != null)
                         {
-                            ToolsHubManger.ShowNotification($"Failed to remove package {packageId}", "error");
-                            Debug.LogError($"Failed to remove package {packageId}: {request.Error.message}");
+                            ToolsHubManager.ShowNotification($"Failed to remove {label}", "error");
+                            Debug.LogError($"Failed to remove package {idForRemoval}: {request.Error.message}");
                         }
 
-                        _activeRemoveRequests.Remove(packageId);
+                        _activeRemoveRequests.Remove(idForRemoval);
                         RefreshPackageCache();
                         onComplete?.Invoke(success);
                         EditorApplication.update -= CheckProgress;
@@ -327,7 +320,8 @@ namespace akira.Packages
             }
             catch (Exception ex)
             {
-                ToolsHubManger.ShowNotification($"Error removing package {packageId}", "error");
+                var label = GetPackageNameFromId(packageId);
+                ToolsHubManager.ShowNotification($"Error removing {label}", "error");
                 Debug.LogError($"Error removing package {packageId}: {ex.Message}");
                 onComplete?.Invoke(false);
             }
@@ -346,25 +340,9 @@ namespace akira.Packages
                 return true;
 
             // For Git packages or other special cases, need to check each package
-            if (packageId.StartsWith("git+"))
+            if (PackageIdUtils.IsGitLike(packageId))
             {
-                // Additional logging for Git package checking (only in debug builds)
-                if (Debug.isDebugBuild)
-                {
-                    Debug.Log($"Checking if Git package is installed: {packageId}");
-                    var normalizedId = NormalizePackageId(packageId);
-                    Debug.Log($"Normalized package ID: {normalizedId}");
-                }
-
-                foreach (var package in _installedPackagesCache.Values)
-                    if (IsPackageIdMatch(packageId, package))
-                    {
-                        if (Debug.isDebugBuild) Debug.Log($"Found matching Git package: {packageId} as {package.name}");
-
-                        return true;
-                    }
-
-                if (Debug.isDebugBuild) Debug.Log($"Git package not found: {packageId}");
+                if (TryFindInstalledPackageInfo(packageId, out _)) return true;
             }
 
             return false;
@@ -383,16 +361,10 @@ namespace akira.Packages
                 return info;
 
             // For Git packages or other special cases, need to check each package
-            if (packageId.StartsWith("git+"))
-                foreach (var package in _installedPackagesCache.Values)
-                    if (IsPackageIdMatch(packageId, package))
-                    {
-                        if (Debug.isDebugBuild)
-                            Debug.Log(
-                                $"Found Git package info for {packageId}: {package.name}, version {package.version}");
-
-                        return package;
-                    }
+            if (PackageIdUtils.IsGitLike(packageId))
+            {
+                if (TryFindInstalledPackageInfo(packageId, out var found)) return found;
+            }
 
             return null;
         }
@@ -405,17 +377,19 @@ namespace akira.Packages
             if (info == null)
                 return false;
 
-            // Check if there's a newer version - compare enum value properly
-            return info.source == PackageSource.Registry &&
-                   !string.IsNullOrEmpty(info.versions.latest) &&
-                   info.versions.latest != info.version;
+            // Registry packages: compare against latest
+            if (info.source == PackageSource.Registry)
+                return !string.IsNullOrEmpty(info.versions.latest) && info.versions.latest != info.version;
+
+            // Git packages: Unity doesn't provide remote comparison; treat as no automatic update available.
+            // A future enhancement could poll the git remote for tags/commits.
+            return false;
         }
 
         // Get all installed packages
         public static async Task<Dictionary<string, PackageInfo>> GetInstalledPackages()
         {
             await RefreshPackageCacheIfNeeded();
-
             return _installedPackagesCache ?? new Dictionary<string, PackageInfo>();
         }
 
@@ -436,7 +410,6 @@ namespace akira.Packages
             if (_refreshingPackageCache)
             {
                 tcs.SetResult(false);
-
                 return tcs.Task;
             }
 
@@ -466,7 +439,6 @@ namespace akira.Packages
                         _refreshingPackageCache = false;
                         EditorApplication.update -= CheckProgress;
                         tcs.TrySetResult(false);
-
                         return;
                     }
 
@@ -501,7 +473,7 @@ namespace akira.Packages
                         }
                         else if (_activeListRequest.Error != null)
                         {
-                            ToolsHubManger.ShowNotification("Failed to list packages", "error");
+                            ToolsHubManager.ShowNotification("Failed to list packages", "error");
                             Debug.LogError($"Failed to list packages: {_activeListRequest.Error.message}");
                             tcs.TrySetResult(false);
                         }
@@ -517,13 +489,52 @@ namespace akira.Packages
             }
             catch (Exception ex)
             {
-                ToolsHubManger.ShowNotification("Error refreshing package information", "error");
+                ToolsHubManager.ShowNotification("Error refreshing package information", "error");
                 Debug.LogError($"Error refreshing package cache: {ex.Message}");
                 _refreshingPackageCache = false;
                 tcs.TrySetResult(false);
             }
 
             return tcs.Task;
+        }
+
+        // Friendly label resolution from package id
+        public static string GetPackageNameFromId(string packageId, PackageInfo info = null)
+        {
+            if (string.IsNullOrWhiteSpace(packageId)) return packageId;
+
+            try
+            {
+                // Prefer provided info (e.g., from AddRequest.Result)
+                if (info != null)
+                {
+                    var nameFromInfo = !string.IsNullOrEmpty(info.displayName) ? info.displayName : info.name;
+                    if (!string.IsNullOrEmpty(nameFromInfo)) return nameFromInfo;
+                }
+
+                // Try installed cache
+                if (_installedPackagesCache != null)
+                {
+                    if (_installedPackagesCache.TryGetValue(packageId, out var cached))
+                        return !string.IsNullOrEmpty(cached.displayName) ? cached.displayName : cached.name;
+
+                    if (TryFindInstalledPackageInfo(packageId, out var found))
+                        return !string.IsNullOrEmpty(found.displayName) ? found.displayName : found.name;
+                }
+
+                // Git/URL fallback to repo name
+                if (PackageIdUtils.IsGitLike(packageId))
+                {
+                    var normalized = PackageIdUtils.NormalizePackageId(packageId);
+                    if (!string.IsNullOrEmpty(normalized)) return normalized;
+                }
+            }
+            catch
+            {
+                // ignore and fall back
+            }
+
+            return packageId;
         }
     }
 }

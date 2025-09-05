@@ -9,13 +9,13 @@ using akira.ToolsHub;
 using TMPro;
 using UnityEditor;
 using UnityEngine;
+using UnityEditor.PackageManager; // added for PackageSource
 
 namespace akira.UI
 {
     public class EssentialPackagesPageImpl : IToolsHubPage
     {
         private const string TEXTMESHPRO_ID = "TextMeshPro";
-
         private const string TEXTMESHPRO_PACKAGE_ID = "com.unity.textmeshpro";
 
         // UI constants
@@ -23,7 +23,6 @@ namespace akira.UI
         private static readonly Color DisabledButtonColor = new(0.7f, 0.2f, 0.2f, 1f);
         private static readonly Color InstallButtonColor = new(0.3f, 0.5f, 0.9f, 1f);
         private static readonly Color HeaderColor = new(0.25f, 0.25f, 0.25f, 1f);
-        private static readonly Color AddButtonColor = new(0.3f, 0.5f, 0.9f, 1f);
         private readonly Dictionary<string, bool> _hasPackageUpdate = new();
 
         // Package status tracking
@@ -31,6 +30,7 @@ namespace akira.UI
         private readonly Dictionary<string, bool> _packageInstallSuccess = new();
         private readonly Dictionary<string, float> _packageProgress = new();
         private readonly Dictionary<string, string> _packageVersions = new();
+        private readonly Dictionary<string, string> _packageLatestVersions = new(); // latest (registry) version when available
         private bool _addingNewPackage;
 
         // Installation state
@@ -49,7 +49,7 @@ namespace akira.UI
         private Vector2 _scrollPosition;
 
         // Filter/search
-        private string _searchFilter = "";
+        private string _search = "";
         private bool _showOnlyEnabled;
         private bool _showOnlyEssential;
         private bool _showOnlyInstalled;
@@ -68,58 +68,153 @@ namespace akira.UI
             EditorApplication.delayCall += InitializePackagePage;
         }
 
+        // Provide a way to rebind the header refresh action when the page regains focus
+        public void BindRefreshHook()
+        {
+            ToolsHubManager.SetPageRefreshHandler(() => RefreshPackageStatus());
+        }
+
         // Page implementation
         public string Title => "Manage Essential & Recommended Packages";
         public string Description => "Install and manage essential and recommended packages for your project";
 
+        // Helper: detect if there are any non-TMP packages configured
+        private bool HasNonTMPPackages()
+        {
+            var packages = ToolsHubSettings.GetAllPackages();
+            if (packages == null || packages.Count == 0) return false;
+            return packages.Any(p =>
+                !string.IsNullOrEmpty(p?.Id) &&
+                !p.Id.Equals(TEXTMESHPRO_ID, StringComparison.OrdinalIgnoreCase) &&
+                !p.Id.Equals(TEXTMESHPRO_PACKAGE_ID, StringComparison.OrdinalIgnoreCase) &&
+                p.Id.IndexOf("textmeshpro", StringComparison.OrdinalIgnoreCase) < 0
+            );
+        }
+
+        // Helper: restore default packages into settings
+        private void RestoreDefaultPackages()
+        {
+            AddDefaultPackages();
+            ToolsHubSettings.Save();
+            ToolsHubManager.ShowNotification("Default package list restored.", "success");
+            RefreshPackageStatus();
+        }
+
         public void DrawContentHeader()
         {
-            // Search bar
+            // Search bar (full width) + Clear button inline
             EditorGUILayout.BeginHorizontal();
-
-            _searchFilter = EditorGUILayout.TextField("Filter:", _searchFilter);
-
-            if (GUILayout.Button("Clear", GUILayout.Width(60)))
-                _searchFilter = "";
-
+            EditorGUILayout.LabelField("Search:", GUILayout.Width(42));
+            _search = EditorGUILayout.TextField(_search ?? string.Empty, GUILayout.ExpandWidth(true));
+            if (GUILayout.Button("Clear", GUILayout.Width(60))) _search = "";
             EditorGUILayout.EndHorizontal();
 
-            // Filter toggles
-            EditorGUILayout.BeginHorizontal();
+            // Wrapping toggles + actions row
+            DrawWrappingFilterControls();
 
-            _showOnlyEnabled = EditorGUILayout.ToggleLeft("Enabled Only", _showOnlyEnabled, GUILayout.Width(110));
-            _showOnlyEssential = EditorGUILayout.ToggleLeft("Essential Only", _showOnlyEssential, GUILayout.Width(110));
-            _showOnlyInstalled = EditorGUILayout.ToggleLeft("Installed Only", _showOnlyInstalled, GUILayout.Width(120));
-
-            GUILayout.FlexibleSpace();
-
-            GUI.enabled = !_isRefreshingStatus && !_isInstalling;
-            if (GUILayout.Button("Refresh Status", GUILayout.Width(110))) RefreshPackageStatus();
-            GUI.enabled = true;
-
-            EditorGUILayout.EndHorizontal();
+            // Show a hint if the list only contains TMP
+            if (!HasNonTMPPackages())
+                EditorGUILayout.HelpBox(
+                    "Only TextMesh Pro is present. Click 'Restore Defaults' to re-add recommended packages.",
+                    MessageType.Info);
 
             // Overall progress when installing
             if (_isInstalling)
             {
                 EditorGUILayout.Space(5);
-                EditorGUILayout.LabelField($"Installing Packages... {_overallProgress:P0}", EditorStyles.boldLabel);
+                EditorGUILayout.LabelField($"Working... {_overallProgress:P0}", EditorStyles.boldLabel);
                 var progressRect = EditorGUILayout.GetControlRect(false, 20);
                 EditorGUI.ProgressBar(progressRect, _overallProgress, "");
                 EditorGUILayout.Space(5);
             }
         }
 
+        // Render the toggle chips and actions with wrapping
+        private void DrawWrappingFilterControls()
+        {
+            float available = Mathf.Max(200f, EditorGUIUtility.currentViewWidth - 24f);
+            float gap = 6f;
+            float lineUsed = 0f;
+
+            void NewLine()
+            {
+                if (lineUsed > 0) EditorGUILayout.EndHorizontal();
+                EditorGUILayout.BeginHorizontal();
+                lineUsed = 0f;
+            }
+
+            float MeasureToggle(string label)
+            {
+                var size = EditorStyles.label.CalcSize(new GUIContent(label));
+                return size.x + 26f; // checkbox + padding
+            }
+
+            float MeasureButton(string label)
+            {
+                var size = GUI.skin.button.CalcSize(new GUIContent(label));
+                return size.x + 8f;
+            }
+
+            void SpaceIfNeeded(float need)
+            {
+                if (lineUsed > 0) { GUILayout.Space(gap); lineUsed += gap; }
+                if (lineUsed + need > available)
+                {
+                    EditorGUILayout.EndHorizontal();
+                    EditorGUILayout.BeginHorizontal();
+                    lineUsed = 0f;
+                }
+            }
+
+            NewLine();
+
+            // Toggles only (Refresh moved to toolbar)
+            var t1w = MeasureToggle("Enabled Only");
+            SpaceIfNeeded(t1w);
+            _showOnlyEnabled = EditorGUILayout.ToggleLeft("Enabled Only", _showOnlyEnabled, GUILayout.Width(t1w));
+            lineUsed += t1w;
+
+            var t2w = MeasureToggle("Essential Only");
+            SpaceIfNeeded(t2w);
+            _showOnlyEssential = EditorGUILayout.ToggleLeft("Essential Only", _showOnlyEssential, GUILayout.Width(t2w));
+            lineUsed += t2w;
+
+            var t3w = MeasureToggle("Installed Only");
+            SpaceIfNeeded(t3w);
+            _showOnlyInstalled = EditorGUILayout.ToggleLeft("Installed Only", _showOnlyInstalled, GUILayout.Width(t3w));
+            lineUsed += t3w;
+
+            if (!HasNonTMPPackages())
+            {
+                var restoreW = MeasureButton("Restore Defaults");
+                SpaceIfNeeded(restoreW);
+                if (GUILayout.Button("Restore Defaults", GUILayout.Width(restoreW))) RestoreDefaultPackages();
+                lineUsed += restoreW;
+            }
+
+            // End the last line
+            EditorGUILayout.EndHorizontal();
+            GUILayout.Space(2);
+        }
+
         public void DrawScrollContent()
         {
             var packages = ToolsHubSettings.GetAllPackages();
 
-            // Default packages if none exist yet
-            if (packages == null || packages.Count == 0)
+            // If there are no packages at all OR only TMP exists, seed defaults
+            var needDefaults = packages == null || packages.Count == 0 || !HasNonTMPPackages();
+            if (needDefaults)
             {
                 AddDefaultPackages();
+                // Ensure persistence so they're visible immediately
+                ToolsHubSettings.Save();
                 packages = ToolsHubSettings.GetAllPackages();
             }
+
+            // Exclude Asset Store entries (handled by dedicated page)
+            packages = packages
+                .Where(p => p.IsAssetStore != true && string.IsNullOrEmpty(p.AssetStoreUrl))
+                .ToList();
 
             // Apply filters
             packages = FilterPackages(packages);
@@ -131,7 +226,8 @@ namespace akira.UI
                 .ToList();
 
             // Draw packages
-            foreach (var package in groupedPackages) DrawPackageEntry(package);
+            foreach (var package in groupedPackages)
+                DrawPackageEntry(package);
         }
 
         // Page implementation
@@ -142,20 +238,43 @@ namespace akira.UI
 
         public void DrawFooter()
         {
-            // Add New Package section
+            // When adding a package, render the form only (form has its own footer buttons)
             if (_addingNewPackage)
             {
                 DrawAddNewPackageForm();
+                return;
             }
-            else
+
+            // Build split footer: Cancel on the left, other actions on the right
+            var left = new List<PageLayout.FooterButton>();
+            var right = new List<PageLayout.FooterButton>();
+
+            void CancelAction()
             {
-                EditorGUILayout.BeginHorizontal();
-                GUILayout.FlexibleSpace();
+                PackageManager.OnPackageInstallProgress -= HandlePackageInstallProgress;
+                PackageManager.OnPackageInstallComplete -= HandlePackageInstallComplete;
+                PackageManager.OnPackageInstallError -= HandlePackageInstallError;
+                PackageManager.OnAllPackagesInstallComplete -= HandleAllPackagesComplete;
+                ToolsHubManager.ClosePage(PageOperationResult.Cancelled);
+            }
 
-                var originalColor = GUI.backgroundColor;
-                GUI.backgroundColor = AddButtonColor;
+            // Left: Close only
+            left.Add(new PageLayout.FooterButton
+            {
+                Label = "Close",
+                Style = PageLayout.FooterButtonStyle.Secondary,
+                Enabled = true,
+                OnClick = CancelAction,
+                MinWidth = 100
+            });
 
-                if (GUILayout.Button("Add New Package", GUILayout.Height(30), GUILayout.Width(150)))
+            // Right: primary actions (right-aligned)
+            right.Add(new PageLayout.FooterButton
+            {
+                Label = "Add New",
+                Style = PageLayout.FooterButtonStyle.Secondary,
+                Enabled = !_isInstalling && !_isRefreshingStatus,
+                OnClick = () =>
                 {
                     _addingNewPackage = true;
                     _newPackageId = "";
@@ -163,44 +282,29 @@ namespace akira.UI
                     _newPackageDescription = "";
                     _newPackageIsEssential = false;
                 }
+            });
 
-                GUI.backgroundColor = originalColor;
-
-                EditorGUILayout.EndHorizontal();
-            }
-
-            // Install selected button
-            if (GetEnabledPackageCount() > 0)
+            var removeCount = GetRemovableCount();
+            right.Add(new PageLayout.FooterButton
             {
-                EditorGUILayout.Space(10);
+                Label = $"Remove ({removeCount})",
+                Style = PageLayout.FooterButtonStyle.Danger,
+                Enabled = removeCount > 0 && !_isInstalling && !_isRefreshingStatus,
+                OnClick = StartPackageRemoval,
+                MinWidth = 110
+            });
 
-                EditorGUILayout.BeginHorizontal();
-                GUILayout.FlexibleSpace();
-
-                GUI.enabled = !_isInstalling && !_isRefreshingStatus;
-                var originalColor = GUI.backgroundColor;
-                GUI.backgroundColor = InstallButtonColor;
-
-                if (GUILayout.Button($"Install Selected ({GetEnabledPackageCount()} packages)",
-                        GUILayout.Height(30), GUILayout.Width(250)))
-                    StartPackageInstallation();
-                GUI.backgroundColor = originalColor;
-                GUI.enabled = true;
-
-                EditorGUILayout.EndHorizontal();
-            }
-
-            GUILayout.Space(10);
-            GUILayout.FlexibleSpace();
-
-            if (PageLayout.DrawCancelButton(100))
+            var installCount = GetInstallableCount();
+            right.Add(new PageLayout.FooterButton
             {
-                // Unregister events
-                PackageManager.OnPackageInstallProgress -= HandlePackageInstallProgress;
-                PackageManager.OnPackageInstallComplete -= HandlePackageInstallComplete;
-                PackageManager.OnPackageInstallError -= HandlePackageInstallError;
-                PackageManager.OnAllPackagesInstallComplete -= HandleAllPackagesComplete;
-            }
+                Label = $"Install ({installCount})",
+                Style = PageLayout.FooterButtonStyle.Primary,
+                Enabled = installCount > 0 && !_isInstalling && !_isRefreshingStatus,
+                OnClick = StartPackageInstallation,
+                MinWidth = 110
+            });
+
+            PageLayout.DrawFooterSplit(left, right);
         }
 
         public void OnPageResult(PageOperationResult result)
@@ -211,6 +315,9 @@ namespace akira.UI
         // New method to initialize everything after constructor completes
         private void InitializePackagePage()
         {
+            // Provide toolbar Refresh hook for this page
+            ToolsHubManager.SetPageRefreshHandler(() => RefreshPackageStatus());
+
             // First, clean up any existing TMP entries to prevent installation attempts
             RemoveConflictingTMPEntries();
 
@@ -248,41 +355,60 @@ namespace akira.UI
         private void HandlePackageInstallProgress(string packageId, float progress)
         {
             _packageProgress[packageId] = progress;
-            EditorApplication.delayCall += () => { EditorWindow.GetWindow<ToolsHubManger>().Repaint(); };
+            // Recompute overall progress as average of active package progresses
+            if (_packageProgress.Count > 0)
+                _overallProgress = Mathf.Clamp01(_packageProgress.Values.Average());
+            else
+                _overallProgress = 0f;
+
+            EditorApplication.delayCall += () => { EditorWindow.GetWindow<ToolsHubManager>().Repaint(); };
         }
 
         private void HandlePackageInstallComplete(string packageId, bool success)
         {
             _packageInstallSuccess[packageId] = success;
+            // Ensure this package shows as complete in progress tracking
+            _packageProgress[packageId] = 1f;
+            // Update overall progress
+            if (_packageProgress.Count > 0)
+                _overallProgress = Mathf.Clamp01(_packageProgress.Values.Average());
+
+            // Recommend restart for Burst installs
+            if (success && string.Equals(packageId, "com.unity.burst", StringComparison.OrdinalIgnoreCase))
+                ToolsHubManager.ShowNotification("Burst installed. Editor restart is recommended.", "warning");
 
             RefreshPackageStatus(packageId);
-            EditorApplication.delayCall += () => { EditorWindow.GetWindow<ToolsHubManger>().Repaint(); };
+            EditorApplication.delayCall += () => { EditorWindow.GetWindow<ToolsHubManager>().Repaint(); };
         }
 
         private void HandlePackageInstallError(string packageId)
         {
             _packageInstallSuccess[packageId] = false;
-            EditorApplication.delayCall += () => { EditorWindow.GetWindow<ToolsHubManger>().Repaint(); };
+            EditorApplication.delayCall += () => { EditorWindow.GetWindow<ToolsHubManager>().Repaint(); };
         }
 
         private void HandleAllPackagesComplete()
         {
             _isInstalling = false;
+            _overallProgress = 1f;
+            // Clear per-package progress after completion to remove lingering bars
+            _packageProgress.Clear();
+            _packageInstallSuccess.Clear();
             RefreshPackageStatus();
-            EditorApplication.delayCall += () => { EditorWindow.GetWindow<ToolsHubManger>().Repaint(); };
+            EditorApplication.delayCall += () => { EditorWindow.GetWindow<ToolsHubManager>().Repaint(); };
         }
 
         private List<PackageEntry> FilterPackages(List<PackageEntry> packages)
         {
-            if (string.IsNullOrWhiteSpace(_searchFilter) && !_showOnlyEnabled &&
+            if (string.IsNullOrWhiteSpace(_search) && !_showOnlyEnabled &&
                 !_showOnlyInstalled && !_showOnlyEssential)
                 return packages;
 
             return packages.Where(p =>
-                (string.IsNullOrWhiteSpace(_searchFilter) ||
-                 p.DisplayName.IndexOf(_searchFilter, StringComparison.OrdinalIgnoreCase) >= 0 ||
-                 p.Id.IndexOf(_searchFilter, StringComparison.OrdinalIgnoreCase) >= 0 ||
-                 p.Description.IndexOf(_searchFilter, StringComparison.OrdinalIgnoreCase) >= 0) &&
+                (string.IsNullOrWhiteSpace(_search) ||
+                 (p.DisplayName ?? string.Empty).IndexOf(_search, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                 (p.Id ?? string.Empty).IndexOf(_search, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                 (p.Description ?? string.Empty).IndexOf(_search, StringComparison.OrdinalIgnoreCase) >= 0) &&
                 (!_showOnlyEnabled || p.IsEnabled) &&
                 (!_showOnlyEssential || p.IsEssential) &&
                 (!_showOnlyInstalled || (_isPackageInstalled.ContainsKey(p.Id) && _isPackageInstalled[p.Id]))
@@ -292,6 +418,7 @@ namespace akira.UI
         private void InstallSinglePackage(string packageId)
         {
             _isInstalling = true;
+            _overallProgress = 0f;
             _packageProgress[packageId] = 0;
 
             // Call install on main thread
@@ -313,159 +440,6 @@ namespace akira.UI
                     RefreshPackageStatus();
                 });
             }
-        }
-
-        private void DrawPackageEntry(PackageEntry package)
-        {
-            // Entry container
-            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
-
-            // Special handling for TextMeshPro which is built-in but needs resources imported
-            var isTMPPackage = package.DisplayName == TEXTMESHPRO_ID;
-
-            // Status flags (different for TMP)
-            var isInstalled = isTMPPackage
-                ? _tmpResourcesInstalled
-                : _isPackageInstalled.ContainsKey(package.Id) && _isPackageInstalled[package.Id];
-
-            var hasUpdate = !isTMPPackage && _hasPackageUpdate.ContainsKey(package.Id) && _hasPackageUpdate[package.Id];
-            var version = !isTMPPackage && _packageVersions.ContainsKey(package.Id) ? _packageVersions[package.Id] : "";
-
-            // Is this a Git package?
-            var isGitPackage = package.Id.StartsWith("git+");
-
-            // Header row with name, status, and toggle
-            EditorGUILayout.BeginHorizontal();
-
-            // Status icon and name
-            var titleStyle = new GUIStyle(EditorStyles.boldLabel);
-
-            if (package.IsEssential)
-                titleStyle.normal.textColor = new Color(0.9f, 0.7f, 0.1f);
-
-            // Toggle for enabled
-            var wasEnabled = package.IsEnabled;
-            package.IsEnabled = EditorGUILayout.Toggle(package.IsEnabled, GUILayout.Width(16));
-            if (wasEnabled != package.IsEnabled) ToolsHubSettings.SetPackageEnabled(package.Id, package.IsEnabled);
-
-            // Display name with icon
-            var displayText = package.DisplayName;
-
-            // Add Git tag for Git packages
-            if (isGitPackage) displayText += " [Git]";
-
-            // Add essential/recommended tag
-            displayText += package.IsEssential ? " (Essential)" : " (Recommended)";
-
-            EditorGUILayout.LabelField(new GUIContent(
-                    displayText,
-                    isInstalled ? EditorGUIUtility.IconContent("Installed").image : null),
-                titleStyle);
-
-            // Version info
-            if (!string.IsNullOrEmpty(version))
-            {
-                var versionStyle = new GUIStyle(EditorStyles.miniLabel) { alignment = TextAnchor.MiddleRight };
-
-                EditorGUILayout.LabelField(hasUpdate ? $"v{version} (Update Available)" : $"v{version}",
-                    versionStyle, GUILayout.Width(150));
-            }
-            else
-            {
-                GUILayout.FlexibleSpace();
-            }
-
-            EditorGUILayout.EndHorizontal();
-
-            // Description
-            var descriptionStyle = new GUIStyle(EditorStyles.miniLabel) { wordWrap = true };
-            EditorGUILayout.LabelField(package.Description, descriptionStyle);
-
-            // Progress bar during installation
-            if (_isInstalling && _packageProgress.ContainsKey(package.Id))
-            {
-                var progress = _packageProgress[package.Id];
-                var progressRect = EditorGUILayout.GetControlRect(false, 10);
-                EditorGUI.ProgressBar(progressRect, progress, "");
-
-                if (_packageInstallSuccess.ContainsKey(package.Id))
-                {
-                    var success = _packageInstallSuccess[package.Id];
-
-                    EditorGUILayout.LabelField(success ? "Installation completed" : "Installation failed",
-                        success
-                            ? EditorStyles.miniBoldLabel
-                            : new GUIStyle(EditorStyles.miniBoldLabel) { normal = { textColor = Color.red } });
-                }
-            }
-
-            // Action buttons
-            EditorGUILayout.BeginHorizontal();
-
-            GUILayout.FlexibleSpace();
-
-            var originalColor = GUI.backgroundColor;
-
-            // Install button - special handling for TextMeshPro
-            GUI.enabled = !_isInstalling && !_isRefreshingStatus && package.IsEnabled;
-
-            if (!isInstalled)
-            {
-                GUI.backgroundColor = InstallButtonColor;
-
-                // Different button text/action for TMP
-                if (isTMPPackage)
-                {
-                    if (GUILayout.Button("Import TMP Resources", GUILayout.Width(150))) ImportTMPResources();
-                }
-                else
-                {
-                    // Show install for Git packages too
-                    if (GUILayout.Button("Install", GUILayout.Width(80))) InstallSinglePackage(package.Id);
-                }
-            }
-            else if (hasUpdate)
-            {
-                GUI.backgroundColor = InstallButtonColor;
-                if (GUILayout.Button("Update", GUILayout.Width(80))) InstallSinglePackage(package.Id);
-            }
-            else
-            {
-                // Don't show remove button for TextMeshPro - it can't be removed
-                if (!isTMPPackage)
-                {
-                    GUI.backgroundColor = DisabledButtonColor;
-                    if (GUILayout.Button("Remove", GUILayout.Width(80))) RemovePackage(package.Id);
-                }
-                else if (isInstalled)
-                {
-                    // For TextMeshPro, provide option to reimport resources
-                    GUI.backgroundColor = InstallButtonColor;
-                    if (GUILayout.Button("Reimport TMP Resources", GUILayout.Width(180))) ImportTMPResources();
-
-                    // Add the remove TMP resources button
-                    GUI.backgroundColor = DisabledButtonColor;
-                    if (GUILayout.Button("Remove TMP Resources", GUILayout.Width(180))) RemoveTMPResources();
-                }
-            }
-
-            GUI.backgroundColor = originalColor;
-            GUI.enabled = true;
-
-            // Remove from list button (only for non-essential packages)
-            GUI.enabled = !_isInstalling && !_isRefreshingStatus && !package.IsEssential;
-
-            if (GUILayout.Button("✕", GUILayout.Width(25)))
-                if (EditorUtility.DisplayDialog("Remove Package",
-                        $"Remove {package.DisplayName} from the package list?", "Yes", "Cancel"))
-                    ToolsHubSettings.RemovePackage(package.Id);
-
-            GUI.enabled = true;
-
-            EditorGUILayout.EndHorizontal();
-
-            EditorGUILayout.EndVertical();
-            EditorGUILayout.Space(5);
         }
 
         private void ImportTMPResources()
@@ -491,7 +465,7 @@ namespace akira.UI
                         // Update the TMP resources installed flag
                         CheckTMPResourcesInstalled();
 
-                        EditorWindow.GetWindow<ToolsHubManger>().Repaint();
+                        EditorWindow.GetWindow<ToolsHubManager>().Repaint();
                     }
                     catch (Exception ex)
                     {
@@ -527,7 +501,7 @@ namespace akira.UI
                     FileUtil.DeleteFileOrDirectory(essentialsPath);
                     FileUtil.DeleteFileOrDirectory(essentialsPath + ".meta");
                     changed = true;
-                    ToolsHubManger.ShowNotification("Deleted TMP Essentials.", "success");
+                    ToolsHubManager.ShowNotification("Deleted TMP Essentials.", "success");
                 }
 
                 if (Directory.Exists(examplesPath))
@@ -535,17 +509,17 @@ namespace akira.UI
                     FileUtil.DeleteFileOrDirectory(examplesPath);
                     FileUtil.DeleteFileOrDirectory(examplesPath + ".meta");
                     changed = true;
-                    ToolsHubManger.ShowNotification("Deleted TMP Examples & Extras.", "success");
+                    ToolsHubManager.ShowNotification("Deleted TMP Examples & Extras.", "success");
                 }
 
                 if (changed)
                     AssetDatabase.Refresh();
                 else
-                    ToolsHubManger.ShowNotification("No TMP resources found to delete.");
+                    ToolsHubManager.ShowNotification("No TMP resources found to delete.");
             }
             catch (Exception ex)
             {
-                ToolsHubManger.ShowNotification("Error removing TMP resources", "error");
+                ToolsHubManager.ShowNotification("Error removing TMP resources", "error");
                 Debug.LogError($"Error setting up TMP resources removal: {ex.Message}");
                 _isInstalling = false;
             }
@@ -579,49 +553,48 @@ namespace akira.UI
             // Example helper
             EditorGUILayout.HelpBox("Package ID examples:\n" +
                                     "• Registry: com.unity.cinemachine\n" +
-                                    "• Git: git+https://github.com/username/repo.git\n" +
+                                    "• Git: git+https://github.com/username/repo.git or https://github.com/username/repo.git\n" +
                                     "• Local: file:/path/to/package",
                 MessageType.Info);
 
             EditorGUILayout.Space(5);
 
             // Buttons
-            EditorGUILayout.BeginHorizontal();
-
-            if (GUILayout.Button("Cancel")) _addingNewPackage = false;
-
             var canSave = !string.IsNullOrWhiteSpace(_newPackageId) &&
                           !string.IsNullOrWhiteSpace(_newPackageDisplayName);
 
-            GUI.enabled = canSave;
-            var originalColor = GUI.backgroundColor;
-            GUI.backgroundColor = AddButtonColor;
-
-            if (GUILayout.Button("Add Package"))
+            var formButtons = new List<PageLayout.FooterButton>
             {
-                // Add the package to settings
-                var packageEntry = new PackageEntry
+                new PageLayout.FooterButton
                 {
-                    Id = _newPackageId.Trim(),
-                    DisplayName = _newPackageDisplayName.Trim(),
-                    Description = _newPackageDescription.Trim(),
-                    IsEssential = _newPackageIsEssential,
-                    IsEnabled = true
-                };
+                    Label = "Cancel",
+                    Style = PageLayout.FooterButtonStyle.Secondary,
+                    Enabled = true,
+                    OnClick = () => _addingNewPackage = false
+                },
+                new PageLayout.FooterButton
+                {
+                    Label = "Add Package",
+                    Style = PageLayout.FooterButtonStyle.Primary,
+                    Enabled = canSave,
+                    OnClick = () =>
+                    {
+                        var packageEntry = new PackageEntry
+                        {
+                            Id = _newPackageId.Trim(),
+                            DisplayName = _newPackageDisplayName.Trim(),
+                            Description = _newPackageDescription.Trim(),
+                            IsEssential = _newPackageIsEssential,
+                            IsEnabled = true
+                        };
+                        ToolsHubSettings.AddOrUpdatePackage(packageEntry);
+                        _addingNewPackage = false;
+                        RefreshPackageStatus(packageEntry.Id);
+                    }
+                }
+            };
 
-                ToolsHubSettings.AddOrUpdatePackage(packageEntry);
-
-                // Reset form
-                _addingNewPackage = false;
-
-                // Refresh status
-                RefreshPackageStatus(packageEntry.Id);
-            }
-
-            GUI.backgroundColor = originalColor;
-            GUI.enabled = true;
-
-            EditorGUILayout.EndHorizontal();
+            PageLayout.DrawFooterButtons(formButtons, alignRight: true, maxPerRow: 3);
 
             EditorGUILayout.EndVertical();
         }
@@ -663,14 +636,14 @@ namespace akira.UI
                 foreach (var package in packages)
                     if (package.DisplayName != TEXTMESHPRO_ID &&
                         package.Id != TEXTMESHPRO_PACKAGE_ID &&
-                        !package.Id.StartsWith("git+"))
+                        !PackageIdUtils.IsGitLike(package.Id))
                         await RefreshSinglePackageStatus(package);
 
                 // Then check Git packages which are more prone to timeouts
                 foreach (var package in packages)
                     if (package.DisplayName != TEXTMESHPRO_ID &&
                         package.Id != TEXTMESHPRO_PACKAGE_ID &&
-                        package.Id.StartsWith("git+"))
+                        PackageIdUtils.IsGitLike(package.Id))
                         await RefreshSinglePackageStatus(package);
             }
             catch (Exception ex)
@@ -684,8 +657,8 @@ namespace akira.UI
                 // Force UI to update
                 EditorApplication.delayCall += () =>
                 {
-                    if (EditorWindow.HasOpenInstances<ToolsHubManger>())
-                        EditorWindow.GetWindow<ToolsHubManger>().Repaint();
+                    if (EditorWindow.HasOpenInstances<ToolsHubManager>())
+                        EditorWindow.GetWindow<ToolsHubManager>().Repaint();
                 };
             }
         }
@@ -695,13 +668,14 @@ namespace akira.UI
             try
             {
                 // Limit debug logging for Git packages to reduce console spam
-                var isGitPackage = package.Id.StartsWith("git+");
+                var isGitPackage = PackageIdUtils.IsGitLike(package.Id);
                 if (isGitPackage && Debug.isDebugBuild) Debug.Log($"Checking status for Git package: {package.Id}");
 
                 var isInstalled = await PackageManager.IsPackageInstalled(package.Id);
                 var info = await PackageManager.GetPackageInfo(package.Id);
                 var hasUpdate = false;
                 var version = "";
+                var latest = "";
 
                 if (isInstalled && info != null)
                 {
@@ -711,16 +685,20 @@ namespace akira.UI
                             $"Found Git package: {package.Id} as {info.name} version {info.version}, source: {info.source}");
 
                     version = info.version;
-                    hasUpdate = await PackageManager.HasPackageUpdate(package.Id);
-                }
-                else if (isGitPackage && Debug.isDebugBuild)
-                {
-                    Debug.Log($"Git package not found: {package.Id}");
+
+                    // For registry packages, surface the latest version for display (and update state)
+                    if (info.source == PackageSource.Registry)
+                    {
+                        latest = info.versions != null ? info.versions.latest : "";
+                        if (!string.IsNullOrEmpty(latest) && latest != version)
+                            hasUpdate = true;
+                    }
                 }
 
                 _isPackageInstalled[package.Id] = isInstalled;
                 _hasPackageUpdate[package.Id] = hasUpdate;
                 _packageVersions[package.Id] = version;
+                _packageLatestVersions[package.Id] = latest;
             }
             catch (Exception ex)
             {
@@ -730,6 +708,7 @@ namespace akira.UI
                 _isPackageInstalled[package.Id] = false;
                 _hasPackageUpdate[package.Id] = false;
                 _packageVersions[package.Id] = "";
+                _packageLatestVersions[package.Id] = "";
             }
         }
 
@@ -755,7 +734,7 @@ namespace akira.UI
                      (_hasPackageUpdate.ContainsKey(package.Id) && _hasPackageUpdate[package.Id])))
                 {
                     // Add debug log for Git packages
-                    if (package.Id.StartsWith("git+"))
+                    if (PackageIdUtils.IsGitLike(package.Id))
                         Debug.Log($"Adding Git package to installation queue: {package.Id}");
 
                     packagesToInstall.Add(package.Id);
@@ -874,7 +853,8 @@ namespace akira.UI
                     DisplayName = "Burst Compiler",
                     Description = "Optimizing compiler for high-performance computation in Unity.",
                     IsEssential = false,
-                    IsEnabled = true
+                    IsEnabled = true,
+                    RequiresRestart = true
                 },
                 // Add Git packages
                 new PackageEntry
@@ -901,26 +881,36 @@ namespace akira.UI
         // Add a helper method to remove any conflicting TextMeshPro entries from settings
         private void RemoveConflictingTMPEntries()
         {
-            var packages = ToolsHubSettings.GetAllPackages();
+            var packages = ToolsHubSettings.GetAllPackages() ?? new List<PackageEntry>();
             var hadConflictingEntries = false;
 
             foreach (var package in packages.ToArray())
+            {
+                var id = package?.Id ?? string.Empty;
+                var name = package?.DisplayName ?? string.Empty;
+
                 // Remove any package with the TextMeshPro package ID or any variations
-                if (package.Id == TEXTMESHPRO_PACKAGE_ID ||
-                    package.Id.Contains("textmeshpro") ||
-                    (package.DisplayName != TEXTMESHPRO_ID &&
-                     package.DisplayName.Contains("Text Mesh Pro")))
+                if (id.Equals(TEXTMESHPRO_PACKAGE_ID, StringComparison.OrdinalIgnoreCase) ||
+                    (id.IndexOf("textmeshpro", StringComparison.OrdinalIgnoreCase) >= 0) ||
+                    (!name.Equals(TEXTMESHPRO_ID, StringComparison.OrdinalIgnoreCase) &&
+                     name.IndexOf("Text Mesh Pro", StringComparison.OrdinalIgnoreCase) >= 0))
                 {
-                    ToolsHubManger.ShowNotification($"Removing conflicting TextMeshPro entry: {package.DisplayName}");
-                    Debug.Log($"Removing conflicting TextMeshPro package entry: {package.Id} / {package.DisplayName}");
-                    ToolsHubSettings.RemovePackage(package.Id);
+                    ToolsHubManager.ShowNotification($"Removing conflicting TextMeshPro entry: {name}");
+                    Debug.Log($"Removing conflicting TextMeshPro package entry: {id} / {name}");
+                    if (!string.IsNullOrEmpty(id))
+                        ToolsHubSettings.RemovePackage(id);
                     hadConflictingEntries = true;
                 }
+            }
 
             // Make sure the TMP entry exists with the correct ID format
-            var tmpEntry = packages.FirstOrDefault(p => p.DisplayName == TEXTMESHPRO_ID && p.Id == TEXTMESHPRO_ID);
+            packages = ToolsHubSettings.GetAllPackages() ?? new List<PackageEntry>();
+            var tmpEntry = packages.FirstOrDefault(p =>
+                (p?.DisplayName ?? string.Empty).Equals(TEXTMESHPRO_ID, StringComparison.OrdinalIgnoreCase) &&
+                (p?.Id ?? string.Empty).Equals(TEXTMESHPRO_ID, StringComparison.OrdinalIgnoreCase));
 
             if (tmpEntry == null)
+            {
                 // Add or update the proper TextMeshPro entry
                 ToolsHubSettings.AddOrUpdatePackage(new PackageEntry
                 {
@@ -931,11 +921,13 @@ namespace akira.UI
                     IsEssential = true,
                     IsEnabled = true
                 });
+                hadConflictingEntries = true;
+            }
 
             // If we found conflicts, save settings explicitly
             if (hadConflictingEntries)
             {
-                ToolsHubManger.ShowNotification("Saved settings after removing conflicting TextMeshPro entries",
+                ToolsHubManager.ShowNotification("Saved settings after removing conflicting TextMeshPro entries",
                     "success");
                 ToolsHubSettings.Save();
             }
@@ -959,15 +951,245 @@ namespace akira.UI
 
             _lastTMPCheck = DateTime.Now;
 
-            var settingsPath = "Assets/TextMesh Pro/Resources/TMP Settings.asset";
+            // C#
+            var dirA = "Assets/TextMesh Pro/Resources";
+            var dirB = "Assets/Text Mesh Pro/Resources";
 
-            // Check if directory exists first (faster than checking file)
-            var dirExists = Directory.Exists("Assets/TextMesh Pro/Resources");
-            _tmpResourcesInstalled = dirExists && File.Exists(settingsPath);
+            var settingsA = Path.Combine(dirA, "TMP Settings.asset").Replace("\\", "/");
+            var settingsB = Path.Combine(dirB, "TMP Settings.asset").Replace("\\", "/");
+
+            // Check either directory and either settings asset
+            var dirExists = Directory.Exists(dirA) || Directory.Exists(dirB);
+            var settingsExists = File.Exists(settingsA) || File.Exists(settingsB);
+
+            _tmpResourcesInstalled = dirExists && settingsExists;
 
             // Only log if requested and in debug builds
             if (logResult && Debug.isDebugBuild)
                 Debug.Log($"TMP Resources check: {_tmpResourcesInstalled} - path exists: {dirExists}");
+        }
+
+        // ========== New helpers and batch removal ==========
+        private int GetInstallableCount()
+        {
+            var list = ToolsHubSettings.GetAllPackages();
+            if (list == null || list.Count == 0) return 0;
+
+            var count = 0;
+            foreach (var package in list)
+            {
+                var isTMP = package.DisplayName == TEXTMESHPRO_ID ||
+                            package.Id == TEXTMESHPRO_PACKAGE_ID ||
+                            package.Id.IndexOf("textmeshpro", StringComparison.OrdinalIgnoreCase) >= 0;
+                if (!package.IsEnabled || isTMP) continue;
+
+                var notInstalled = !_isPackageInstalled.ContainsKey(package.Id) || !_isPackageInstalled[package.Id];
+                var needsUpdate = _hasPackageUpdate.ContainsKey(package.Id) && _hasPackageUpdate[package.Id];
+                if (notInstalled || needsUpdate) count++;
+            }
+
+            // Account for TMP resource import if enabled and missing
+            var tmp = list.FirstOrDefault(p => p.DisplayName == TEXTMESHPRO_ID);
+            if (tmp != null && tmp.IsEnabled && !_tmpResourcesInstalled) count++;
+
+            return count;
+        }
+
+        private int GetRemovableCount()
+        {
+            var list = ToolsHubSettings.GetAllPackages();
+            if (list == null || list.Count == 0) return 0;
+
+            var count = 0;
+            foreach (var package in list)
+            {
+                var isTMP = package.DisplayName == TEXTMESHPRO_ID ||
+                            package.Id == TEXTMESHPRO_PACKAGE_ID ||
+                            package.Id.IndexOf("textmeshpro", StringComparison.OrdinalIgnoreCase) >= 0;
+                if (!package.IsEnabled || isTMP) continue;
+                if (_isPackageInstalled.ContainsKey(package.Id) && _isPackageInstalled[package.Id]) count++;
+            }
+            return count;
+        }
+
+        private void StartPackageRemoval()
+        {
+            var list = ToolsHubSettings.GetAllPackages();
+            if (list == null || list.Count == 0) return;
+
+            var toRemove = new List<string>();
+            foreach (var package in list)
+            {
+                var isTMP = package.DisplayName == TEXTMESHPRO_ID ||
+                            package.Id == TEXTMESHPRO_PACKAGE_ID ||
+                            package.Id.IndexOf("textmeshpro", StringComparison.OrdinalIgnoreCase) >= 0;
+                if (!package.IsEnabled || isTMP) continue;
+                if (_isPackageInstalled.ContainsKey(package.Id) && _isPackageInstalled[package.Id])
+                    toRemove.Add(package.Id);
+            }
+
+            if (toRemove.Count == 0)
+            {
+                EditorUtility.DisplayDialog("No Packages to Remove",
+                    "No enabled, installed packages were found to remove.", "OK");
+                return;
+            }
+
+            if (!EditorUtility.DisplayDialog("Remove Packages",
+                    $"Remove {toRemove.Count} selected package(s)?", "Remove", "Cancel"))
+                return;
+
+            _isInstalling = true;
+            _overallProgress = 0f;
+
+            int total = toRemove.Count;
+            int completed = 0;
+
+            void OneDone()
+            {
+                completed++;
+                _overallProgress = Mathf.Clamp01((float)completed / total);
+                if (completed >= total)
+                {
+                    _isInstalling = false;
+                    RefreshPackageStatus();
+                    EditorApplication.delayCall += () =>
+                    {
+                        if (EditorWindow.HasOpenInstances<ToolsHubManager>())
+                            EditorWindow.GetWindow<ToolsHubManager>().Repaint();
+                    };
+                }
+            }
+
+            foreach (var id in toRemove)
+            {
+                var capture = id;
+                PackageManager.RemovePackage(capture, success => { OneDone(); });
+            }
+        }
+
+        // ========= New UI helpers =========
+        private void DrawPackageEntry(PackageEntry package)
+        {
+            // Determine special cases and state
+            var isTMP = package.DisplayName == TEXTMESHPRO_ID || package.Id == TEXTMESHPRO_PACKAGE_ID ||
+                        package.Id.IndexOf("textmeshpro", StringComparison.OrdinalIgnoreCase) >= 0;
+            var isGit = PackageIdUtils.IsGitLike(package.Id);
+            var installed = _isPackageInstalled.ContainsKey(package.Id) && _isPackageInstalled[package.Id];
+            var hasUpdate = _hasPackageUpdate.ContainsKey(package.Id) && _hasPackageUpdate[package.Id];
+            var version = _packageVersions.ContainsKey(package.Id) ? _packageVersions[package.Id] : string.Empty;
+            var latest = _packageLatestVersions.ContainsKey(package.Id) ? _packageLatestVersions[package.Id] : string.Empty;
+            var inProgress = _packageProgress.ContainsKey(package.Id);
+
+            // Card container
+            PackageUIUtils.BeginCard();
+
+            // Title row with optional enable checkbox on the left
+            var title = string.IsNullOrEmpty(package.DisplayName) ? package.Id : package.DisplayName;
+            PackageUIUtils.DrawTitleRow(title, !isTMP, package.IsEnabled, out var newEnabled);
+            if (!isTMP && newEnabled != package.IsEnabled)
+            {
+                package.IsEnabled = newEnabled;
+                ToolsHubSettings.AddOrUpdatePackage(package);
+            }
+            
+            // Build all chips and draw with wrapping flow
+            var std = PackageUIUtils.BuildStandardChips(
+                package.IsEssential,
+                isTMP ? _tmpResourcesInstalled : installed,
+                hasUpdate,
+                isGit,
+                isTMP,
+                version,
+                latest
+            );
+            var meta = PackageUIUtils.BuildMetaChips(package);
+            var allChips = new List<PackageUIUtils.TagChip>();
+            allChips.AddRange(std);
+            allChips.AddRange(meta);
+            PackageUIUtils.DrawChipFlow(allChips);
+
+            // Description
+            PackageUIUtils.DrawDescription(package.Description);
+
+            GUILayout.Space(4);
+
+            // Build action buttons list
+            var actions = new List<PackageUIUtils.ActionButton>();
+
+            if (isTMP)
+            {
+                var importLabel = _tmpResourcesInstalled ? "Reimport TMP" : "Import TMP";
+                actions.Add(new PackageUIUtils.ActionButton
+                {
+                    Label = importLabel,
+                    Enabled = true,
+                    Bg = InstallButtonColor,
+                    OnClick = ImportTMPResources
+                });
+                actions.Add(new PackageUIUtils.ActionButton
+                {
+                    Label = "Remove",
+                    Enabled = true,
+                    Bg = DisabledButtonColor,
+                    OnClick = RemoveTMPResources
+                });
+            }
+            else
+            {
+                if (!installed)
+                {
+                    actions.Add(new PackageUIUtils.ActionButton
+                    {
+                        Label = "Install",
+                        Enabled = package.IsEnabled && !_isInstalling && !_isRefreshingStatus,
+                        Bg = InstallButtonColor,
+                        OnClick = () => InstallSinglePackage(package.Id)
+                    });
+                }
+                else
+                {
+                    if (hasUpdate)
+                    {
+                        actions.Add(new PackageUIUtils.ActionButton
+                        {
+                            Label = "Update",
+                            Enabled = package.IsEnabled && !_isInstalling && !_isRefreshingStatus,
+                            Bg = InstallButtonColor,
+                            OnClick = () => InstallSinglePackage(package.Id)
+                        });
+                    }
+
+                    actions.Add(new PackageUIUtils.ActionButton
+                    {
+                        Label = "Remove",
+                        Enabled = !_isInstalling && !_isRefreshingStatus,
+                        Bg = DisabledButtonColor,
+                        OnClick = () => RemovePackage(package.Id)
+                    });
+                }
+            }
+
+            // Draw actions; for TMP include status on the same row
+            if (isTMP)
+            {
+                var tmpStatus = _tmpResourcesInstalled ? "TMP Resources Imported" : "TMP Resources Missing";
+                PackageUIUtils.DrawActionButtonsFlowWithLeftPrefix(tmpStatus, EditorStyles.miniBoldLabel, actions);
+            }
+            else
+            {
+                PackageUIUtils.DrawActionButtonsFlow(actions);
+            }
+
+            // Progress bar for this package
+            if (inProgress)
+            {
+                var p = Mathf.Clamp01(_packageProgress[package.Id]);
+                var rect = EditorGUILayout.GetControlRect(false, 16);
+                EditorGUI.ProgressBar(rect, p, p > 0f && p < 1f ? "Working…" : (p >= 1f ? "Done" : string.Empty));
+            }
+
+            PackageUIUtils.EndCard();
         }
     }
 
@@ -988,30 +1210,39 @@ namespace akira.UI
         {
             try
             {
-                var packages = ToolsHubSettings.GetAllPackages();
+                var packages = ToolsHubSettings.GetAllPackages() ?? new List<PackageEntry>();
+                if (packages.Count == 0) return;
                 var hadConflictingEntries = false;
 
                 // Remove any problematic TextMeshPro entries
                 foreach (var package in packages.ToArray())
+                {
+                    var id = package?.Id ?? string.Empty;
+                    var name = package?.DisplayName ?? string.Empty;
+
                     // Check for problematic entries
-                    if (package.Id == "com.unity.textmeshpro" ||
-                        (package.Id != "TextMeshPro" && package.Id.Contains("textmeshpro")) ||
-                        (package.DisplayName != "TextMeshPro" && package.DisplayName.Contains("Text Mesh Pro")))
+                    if (id.Equals("com.unity.textmeshpro", StringComparison.OrdinalIgnoreCase) ||
+                        (!id.Equals("TextMeshPro", StringComparison.OrdinalIgnoreCase) &&
+                         id.IndexOf("textmeshpro", StringComparison.OrdinalIgnoreCase) >= 0) ||
+                        (!name.Equals("TextMeshPro", StringComparison.OrdinalIgnoreCase) &&
+                         name.IndexOf("Text Mesh Pro", StringComparison.OrdinalIgnoreCase) >= 0))
                     {
-                        ToolsHubSettings.RemovePackage(package.Id);
+                        if (!string.IsNullOrEmpty(id))
+                            ToolsHubSettings.RemovePackage(id);
                         hadConflictingEntries = true;
                     }
+                }
 
                 // Save if we made changes
                 if (hadConflictingEntries)
                 {
-                    ToolsHubManger.ShowNotification("Cleaned up package settings during startup", "success");
+                    ToolsHubManager.ShowNotification("Cleaned up package settings during startup", "success");
                     ToolsHubSettings.Save();
                 }
             }
             catch (Exception ex)
             {
-                ToolsHubManger.ShowNotification("Error cleaning up package settings", "error");
+                ToolsHubManager.ShowNotification("Error cleaning up package settings", "error");
                 Debug.LogError($"Error cleaning up package settings: {ex.Message}");
             }
         }
@@ -1051,8 +1282,12 @@ namespace akira.UI
                 };
             }
 
+            // Ensure the page binds the header refresh action any time it's drawn
+            _currentPageImpl.BindRefreshHook();
+
             _currentPageImpl.DrawPage();
         }
     }
 }
 #endif
+

@@ -154,7 +154,7 @@ namespace akira.Folders
             }
             catch (Exception e)
             {
-                ToolsHubManger.ShowNotification("Error loading folder presets", "error");
+                ToolsHubManager.ShowNotification("Error loading folder presets", "error");
                 Debug.LogError($"Error loading presets: {e.Message}\nJSON: {json}");
                 // Reset the corrupted data
                 EditorPrefs.SetString(PRESETS_KEY, "{\"presets\":[]}");
@@ -222,11 +222,11 @@ namespace akira.Folders
             {
                 var json = preset.ToJson();
                 File.WriteAllText(filePath, json);
-                ToolsHubManger.ShowNotification($"Preset exported to {filePath}", "success");
+                ToolsHubManager.ShowNotification($"Preset exported to {filePath}", "success");
             }
             catch (Exception e)
             {
-                ToolsHubManger.ShowNotification("Error exporting preset", "error");
+                ToolsHubManager.ShowNotification("Error exporting preset", "error");
                 Debug.LogError($"Error exporting preset: {e.Message}");
             }
         }
@@ -241,7 +241,7 @@ namespace akira.Folders
             }
             catch (Exception e)
             {
-                ToolsHubManger.ShowNotification("Error importing preset", "error");
+                ToolsHubManager.ShowNotification("Error importing preset", "error");
                 Debug.LogError($"Error importing preset: {e.Message}");
 
                 return null;

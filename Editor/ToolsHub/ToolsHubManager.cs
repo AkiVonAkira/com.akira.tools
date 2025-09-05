@@ -8,6 +8,7 @@ using akira.UI;
 using Editor.Files;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.UIElements;
 using Object = UnityEngine.Object;
 
 namespace akira.ToolsHub
@@ -36,17 +37,17 @@ namespace akira.ToolsHub
         Cancelled
     }
 
-    public class ToolsHubManger : EditorWindow
+    public class ToolsHubManager : EditorWindow
     {
-        private static ToolsHubManger _instance;
+        private static ToolsHubManager _instance;
         private static List<MethodInfo> _cachedMethods = new();
         private static Texture2D _normalBg;
         private static Texture2D _hoverBg;
         private static Texture2D _activeBg;
         private static string _toolbarNotification;
         private static double _toolbarNotificationTime;
+        private static bool _refreshQueued;
         private readonly float _buttonHeight = 28;
-        private readonly int _buttonsPerRow = 4;
         private readonly Color _foldoutBgColor = new(0.18f, 0.18f, 0.18f, 1f);
         private readonly Color _foldoutBorderColor = new(0.35f, 0.35f, 0.35f, 1f);
         private readonly List<PageState> _pageStack = new();
@@ -57,13 +58,36 @@ namespace akira.ToolsHub
         private Texture2D _popupIcon;
         private MenuNode _rootNode;
         private Vector2 _scrollPosition;
+        private IMGUIContainer _imguiContainer;
+        private static readonly float MinWidth = 480;
+        private static readonly float MinHeight = 600;
+        private static Action _pageRefreshHandler; // new: per-page refresh hook
 
         private void OnEnable()
         {
             _instance = this;
-            InitializeStyles();
+            minSize = new Vector2(MinWidth, MinHeight);
+
+            WarmupMenuCache();
             RefreshMenuTree();
+            EditorApplication.delayCall += RefreshOpenWindowMenu;
             ClearPageStack();
+        }
+
+        private void CreateGUI()
+        {
+            var root = rootVisualElement;
+            root.style.minWidth = MinWidth;
+            root.style.minHeight = MinHeight;
+
+            if (_imguiContainer == null)
+            {
+                _imguiContainer = new IMGUIContainer(DrawIMGUI)
+                {
+                    style = { flexGrow = 1 }
+                };
+                root.Add(_imguiContainer);
+            }
         }
 
         private void OnDisable()
@@ -72,9 +96,10 @@ namespace akira.ToolsHub
             ClearPageStack();
         }
 
-        private void OnGUI()
+        private void DrawIMGUI()
         {
-            InitializeStyles();
+            try { InitializeStyles(); } catch (Exception ex) { Debug.LogWarning($"ToolsHub styles init skipped: {ex.Message}"); }
+
             DrawToolbar();
 
             if (_currentPageIndex > -1 && _currentPageIndex < _pageStack.Count)
@@ -103,14 +128,26 @@ namespace akira.ToolsHub
                 return;
             }
 
+            // No page: ensure refresh handler is cleared
+            _pageRefreshHandler = null;
+
             GUILayout.Space(8);
-            GUILayout.Label("Akira Tools Hub", _headerStyle);
+            GUILayout.Label("Akira Tools Hub", _headerStyle ?? EditorStyles.boldLabel);
             GUILayout.Space(8);
 
             if (_rootNode == null)
             {
-                EditorGUILayout.HelpBox("No menu items found, try Refreshing.", MessageType.Warning);
-
+                EditorGUILayout.HelpBox("Loading menu…", MessageType.Info);
+                // Queue a single refresh if not already queued to avoid flooding delayCall on every repaint
+                if (!_refreshQueued)
+                {
+                    _refreshQueued = true;
+                    EditorApplication.delayCall += () =>
+                    {
+                        try { RefreshOpenWindowMenu(); }
+                        finally { _refreshQueued = false; }
+                    };
+                }
                 return;
             }
 
@@ -123,7 +160,7 @@ namespace akira.ToolsHub
             foreach (var node in _rootNode.Children)
             {
                 if (!first)
-                    EditorGUILayout.LabelField("", GUI.skin.horizontalSlider);
+                    UIEditorUtils.DrawDividerLine();
                 DrawNode(node, 0, true);
                 first = false;
             }
@@ -132,10 +169,67 @@ namespace akira.ToolsHub
             DrawRecentRenames();
         }
 
+        private void DrawToolbar()
+        {
+            EditorGUILayout.BeginHorizontal(EditorStyles.toolbar);
+            DrawBackForwardButtons();
+            GUILayout.Space(8);
+
+            if (!string.IsNullOrEmpty(_toolbarNotification))
+            {
+                var notifStyle = new GUIStyle(EditorStyles.label)
+                {
+                    normal = { textColor = Color.yellow },
+                    alignment = TextAnchor.MiddleCenter,
+                    fontStyle = FontStyle.Bold
+                };
+                notifStyle.richText = true;
+                GUILayout.FlexibleSpace();
+                GUILayout.Label(_toolbarNotification, notifStyle, GUILayout.ExpandWidth(true));
+                GUILayout.FlexibleSpace();
+            }
+            else
+            {
+                GUILayout.FlexibleSpace();
+            }
+
+            if (!string.IsNullOrEmpty(_toolbarNotification) &&
+                EditorApplication.timeSinceStartup - _toolbarNotificationTime > 10)
+            {
+                _toolbarNotification = null;
+                Repaint();
+            }
+
+            // Toolbar Refresh now calls page hook if available, otherwise refreshes menu
+            if (GUILayout.Button("Refresh", EditorStyles.toolbarButton, GUILayout.Width(70)))
+            {
+                if (_pageRefreshHandler != null)
+                {
+                    try { _pageRefreshHandler.Invoke(); }
+                    catch (Exception ex) { Debug.LogError($"Page refresh error: {ex.Message}"); }
+                }
+                else
+                {
+                    RefreshMenuTree();
+                }
+            }
+            EditorGUILayout.EndHorizontal();
+        }
+
+        public static void SetPageRefreshHandler(Action handler)
+        {
+            _pageRefreshHandler = handler;
+        }
+
+        public static void ClearPageRefreshHandler()
+        {
+            _pageRefreshHandler = null;
+        }
+
         public static void ShowPage(string title, Action drawMethod, Action<PageOperationResult> onResult = null)
         {
             if (_instance == null)
-                _instance = GetWindow<ToolsHubManger>("Akira Tools Hub");
+                _instance = GetWindow<ToolsHubManager>("Akira Tools Hub");
             PageLayout.ResetState(title);
 
             if (_instance._currentPageIndex < _instance._pageStack.Count - 1)
@@ -143,6 +237,7 @@ namespace akira.ToolsHub
                     _instance._pageStack.Count - _instance._currentPageIndex - 1);
             _instance._pageStack.Add(new PageState { Title = title, DrawPage = drawMethod, OnResult = onResult });
             _instance._currentPageIndex = _instance._pageStack.Count - 1;
+            _pageRefreshHandler = null; // new page, clear old handler
             _instance.Repaint();
         }
 
@@ -154,6 +249,7 @@ namespace akira.ToolsHub
             page.OnResult?.Invoke(result);
             _instance._pageStack.RemoveAt(_instance._currentPageIndex);
             _instance._currentPageIndex = _instance._pageStack.Count - 1;
+            _pageRefreshHandler = null; // leaving page
             _instance.Repaint();
         }
 
@@ -175,13 +271,14 @@ namespace akira.ToolsHub
 
             if (_instance._pageStack.Count == 0)
                 _instance._currentPageIndex = -1;
+            _pageRefreshHandler = null; // after navigation
             _instance.Repaint();
         }
 
         public static void ShowNotification(string message, string type = "info")
         {
             if (_instance == null)
-                _instance = GetWindow<ToolsHubManger>("Akira Tools Hub");
+                _instance = GetWindow<ToolsHubManager>("Akira Tools Hub");
 
             switch (type.ToLower())
             {
@@ -210,6 +307,22 @@ namespace akira.ToolsHub
                 _instance.Repaint();
         }
 
+        // Warmup cached method list so first-time opening doesn't require a manual refresh
+        public static void WarmupMenuCache()
+        {
+            try { _ = GetMenuButtonMethods(); } catch { /* ignore */ }
+        }
+
+        // External-safe way to refresh menu of an open window (no instance => no-op)
+        public static void RefreshOpenWindowMenu()
+        {
+            if (_instance != null)
+            {
+                _instance.RefreshMenuTree();
+                _instance.Repaint();
+            }
+        }
+
         private void RefreshMenuTree()
         {
             _cachedMethods = null;
@@ -223,40 +336,6 @@ namespace akira.ToolsHub
             _currentPageIndex = -1;
         }
 
-        private void DrawToolbar()
-        {
-            EditorGUILayout.BeginHorizontal(EditorStyles.toolbar);
-            DrawBackForwardButtons();
-            GUILayout.Space(8);
-
-            if (!string.IsNullOrEmpty(_toolbarNotification))
-            {
-                var notifStyle = new GUIStyle(EditorStyles.label)
-                {
-                    normal = { textColor = Color.yellow },
-                    alignment = TextAnchor.MiddleCenter,
-                    fontStyle = FontStyle.Bold
-                };
-                GUILayout.FlexibleSpace();
-                GUILayout.Label(_toolbarNotification, notifStyle, GUILayout.ExpandWidth(true));
-                GUILayout.FlexibleSpace();
-            }
-            else
-            {
-                GUILayout.FlexibleSpace();
-            }
-
-            if (!string.IsNullOrEmpty(_toolbarNotification) &&
-                EditorApplication.timeSinceStartup - _toolbarNotificationTime > 10)
-            {
-                _toolbarNotification = null;
-                Repaint();
-            }
-
-            if (GUILayout.Button("Refresh", EditorStyles.toolbarButton, GUILayout.Width(70)))
-                RefreshMenuTree();
-            EditorGUILayout.EndHorizontal();
-        }
 
         private void DrawBackForwardButtons()
         {
@@ -301,11 +380,15 @@ namespace akira.ToolsHub
 
         private void DrawRecentRenames()
         {
+            // Hide the recent rename list entirely when asset prefixing is disabled
+            if (!AutoAssetPrefix.Enabled)
+                return;
+
             var displayCount = Mathf.Min(AutoAssetPrefix.RecentRenameDisplayCount, AutoAssetPrefix.RecentRenames.Count);
 
             if (displayCount > 0)
             {
-                GUILayout.Space(6);
+                UIEditorUtils.DrawDividerLine();
                 EditorGUILayout.LabelField("Recent Asset Renames", EditorStyles.boldLabel);
 
                 for (var i = 0; i < displayCount; i++)
@@ -459,14 +542,19 @@ namespace akira.ToolsHub
                 _activeBg = CreateColorTexture(new Color(0.18f, 0.18f, 0.18f));
 
             if (_headerStyle == null)
-                _headerStyle = new GUIStyle(EditorStyles.boldLabel)
+            {
+                var baseHeader = EditorStyles.boldLabel ?? new GUIStyle();
+                _headerStyle = new GUIStyle(baseHeader)
                 {
-                    fontSize = 16, alignment = TextAnchor.MiddleCenter, normal = { textColor = Color.white }
+                    fontSize = 16, alignment = TextAnchor.MiddleCenter
                 };
+                _headerStyle.normal.textColor = Color.white;
+            }
 
             if (_buttonStyle == null)
             {
-                _buttonStyle = new GUIStyle(EditorStyles.miniButton)
+                var mini = EditorStyles.miniButton ?? new GUIStyle(GUI.skin.button);
+                _buttonStyle = new GUIStyle(mini)
                 {
                     fontSize = 12,
                     fontStyle = FontStyle.Bold,
@@ -476,10 +564,11 @@ namespace akira.ToolsHub
                     border = new RectOffset(3, 3, 3, 3)
                 };
                 _buttonStyle.normal.textColor = Color.white;
-                _buttonStyle.normal.background = _normalBg;
                 _buttonStyle.hover.textColor = Color.white;
-                _buttonStyle.hover.background = _hoverBg;
                 _buttonStyle.active.textColor = Color.white;
+                // backgrounds depend on generated textures
+                _buttonStyle.normal.background = _normalBg;
+                _buttonStyle.hover.background = _hoverBg;
                 _buttonStyle.active.background = _activeBg;
                 _buttonStyle.border = new RectOffset(3, 3, 3, 3);
             }
@@ -487,23 +576,22 @@ namespace akira.ToolsHub
             if (_compactFoldoutStyle == null)
             {
                 var baseStyle = EditorStyles.label ?? new GUIStyle();
-
                 _compactFoldoutStyle = new GUIStyle(baseStyle)
                 {
                     fontSize = 12,
                     fontStyle = FontStyle.Bold,
                     alignment = TextAnchor.MiddleLeft,
                     padding = new RectOffset(6, 2, 2, 2),
-                    margin = new RectOffset(0, 0, 0, 0),
-                    normal = { textColor = Color.white },
-                    focused = { textColor = Color.white }
+                    margin = new RectOffset(0, 0, 0, 0)
                 };
+                _compactFoldoutStyle.normal.textColor = Color.white;
+                _compactFoldoutStyle.focused.textColor = Color.white;
             }
 
             if (_popupIcon == null)
             {
                 var assetPath = "Packages/com.akira.tools/Assets/popup.png";
-                _popupIcon = AssetDatabase.LoadAssetAtPath<Texture2D>(assetPath);
+                try { _popupIcon = AssetDatabase.LoadAssetAtPath<Texture2D>(assetPath); } catch { _popupIcon = null; }
             }
         }
 
@@ -517,7 +605,7 @@ namespace akira.ToolsHub
             var arrowSize = 12f;
             var arrowPadding = 2f;
             EditorGUI.DrawRect(headerRect, _foldoutBgColor);
-            DrawRectBorder(headerRect, _foldoutBorderColor, 1);
+            UIEditorUtils.DrawRectBorder(headerRect, _foldoutBorderColor, 1);
             var arrowRect = new Rect(headerRect.x + indent * 12 + arrowPadding, headerRect.y + 4, arrowSize, arrowSize);
 
             var labelRect = new Rect(arrowRect.xMax + 2, headerRect.y,
@@ -551,7 +639,7 @@ namespace akira.ToolsHub
                 foreach (var child in node.Children)
                 {
                     if (!firstChild)
-                        DrawDividerLine();
+                        UIEditorUtils.DrawDividerLine();
                     DrawNode(child, indent + 1);
                     firstChild = false;
                 }
@@ -560,93 +648,100 @@ namespace akira.ToolsHub
             }
         }
 
-        private void DrawDividerLine()
-        {
-            var rect = EditorGUILayout.GetControlRect(false, 1, GUILayout.ExpandWidth(true));
-            EditorGUI.DrawRect(rect, new Color(0.25f, 0.25f, 0.25f, 1f));
-        }
-
-        private void DrawRectBorder(Rect rect, Color color, int thickness)
-        {
-            EditorGUI.DrawRect(new Rect(rect.x, rect.y, rect.width, thickness), color);
-            EditorGUI.DrawRect(new Rect(rect.x, rect.y, thickness, rect.height), color);
-            EditorGUI.DrawRect(new Rect(rect.xMax - thickness, rect.y, thickness, rect.height), color);
-            EditorGUI.DrawRect(new Rect(rect.x, rect.yMax - thickness, rect.width, thickness), color);
-        }
-
         private void DrawButtonGrid(List<ButtonInfo> buttons)
         {
-            var totalButtons = buttons.Count;
-            var rows = Mathf.CeilToInt((float)totalButtons / _buttonsPerRow);
-            var spacing = Mathf.Clamp(2f + (8f - totalButtons), 2f, 8f);
+            if (buttons == null || buttons.Count == 0) return;
 
-            for (var row = 0; row < rows; row++)
+            const float gap = 8f;               // horizontal gap between buttons
+            const float sideGap = 4f;           // left/right padding inside container
+            const int maxButtonsPerRow = 4;     // cap columns per row
+
+            var total = buttons.Count;
+            var index = 0;
+
+            // Measure label widths with current style (includes style padding)
+            var measured = new float[total];
+            for (var i = 0; i < total; i++)
             {
-                EditorGUILayout.BeginHorizontal();
-                GUILayout.Space(spacing);
-                var buttonsInThisRow = Math.Min(_buttonsPerRow, totalButtons - row * _buttonsPerRow);
+                var gc = new GUIContent(buttons[i].Label, buttons[i].Tooltip);
+                measured[i] = Mathf.Ceil(_buttonStyle.CalcSize(gc).x);
+            }
 
-                for (var col = 0; col < buttonsInThisRow; col++)
+            while (index < total)
+            {
+                // Derive available row width from the current view width (stable across layout/repaint)
+                var availableWidth = Mathf.Max(200f, EditorGUIUtility.currentViewWidth - 20f);
+
+                // Determine how many buttons to place in this row based on content widths
+                var remaining = total - index;
+                var countThisRow = Mathf.Min(maxButtonsPerRow, remaining);
+
+                while (countThisRow > 1)
                 {
-                    var index = row * _buttonsPerRow + col;
-                    var button = buttons[index];
+                    var candidateWidth = (availableWidth - gap * (countThisRow - 1)) / countThisRow;
+                    var required = 0f;
 
-                    var buttonRect = GUILayoutUtility.GetRect(
-                        new GUIContent(button.Label, button.Tooltip),
-                        _buttonStyle,
-                        GUILayout.Height(_buttonHeight),
-                        GUILayout.ExpandWidth(true)
-                    );
+                    for (var k = 0; k < countThisRow; k++)
+                        required = Mathf.Max(required, measured[index + k]);
+
+                    if (candidateWidth + 0.5f >= required)
+                        break;
+
+                    countThisRow--;
+                }
+
+                // Row: equal-width layout using GUILayout so Unity fills space; no explicit width reservation
+                EditorGUILayout.BeginHorizontal();
+                GUILayout.Space(sideGap);
+
+                for (var i = 0; i < countThisRow && index < total; i++)
+                {
+                    var btn = buttons[index];
+                    var content = new GUIContent(btn.Label, btn.Tooltip);
                     var pressed = false;
 
-                    if (button.IsPage)
+                    if (btn.IsPage)
                     {
-                        if (GUI.Button(buttonRect, GUIContent.none, _buttonStyle))
+                        if (GUILayout.Button(content, _buttonStyle, GUILayout.ExpandWidth(true), GUILayout.Height(_buttonHeight)))
                             pressed = true;
-                        GUI.Label(buttonRect, new GUIContent(button.Label, button.Tooltip), _buttonStyle);
+                        var rect = GUILayoutUtility.GetLastRect();
 
                         if (_popupIcon != null)
                         {
-                            var iconSize = 16f;
-
-                            var iconRect = new Rect(
-                                buttonRect.xMax - iconSize - 4,
-                                buttonRect.y + 2,
-                                iconSize, iconSize
-                            );
-                            var prevColor = GUI.color;
+                            const float iconSize = 16f;
+                            var iconRect = new Rect(rect.xMax - iconSize - 4, rect.y + 2, iconSize, iconSize);
+                            var prev = GUI.color;
                             GUI.color = Color.white;
                             GUI.DrawTexture(iconRect, _popupIcon, ScaleMode.ScaleToFit, true);
-                            GUI.color = prevColor;
+                            GUI.color = prev;
                         }
                     }
                     else
                     {
-                        if (GUI.Button(buttonRect, new GUIContent(button.Label, button.Tooltip), _buttonStyle))
+                        if (GUILayout.Button(content, _buttonStyle, GUILayout.ExpandWidth(true), GUILayout.Height(_buttonHeight)))
                             pressed = true;
                     }
 
-                    if (col < buttonsInThisRow - 1)
-                        GUILayout.Space(spacing);
+                    if (i < countThisRow - 1)
+                        GUILayout.Space(gap);
 
                     if (pressed)
                     {
-                        if (button.IsPage)
+                        if (btn.IsPage)
                         {
                             if (_currentPageIndex < _pageStack.Count - 1)
                                 _pageStack.RemoveRange(_currentPageIndex + 1, _pageStack.Count - _currentPageIndex - 1);
 
                             if (_currentPageIndex == -1 || _pageStack.Count == 0 ||
-                                _pageStack[_currentPageIndex].Title != button.Label)
+                                _pageStack[_currentPageIndex].Title != btn.Label)
                             {
                                 _pageStack.Add(new PageState
                                 {
-                                    Title = button.Label,
-                                    DrawPage = button.PageDrawAction ?? (() =>
+                                    Title = btn.Label,
+                                    DrawPage = btn.PageDrawAction ?? (() =>
                                     {
                                         GUILayout.Label("No custom page content.", EditorStyles.centeredGreyMiniLabel);
                                         GUILayout.Space(10);
-
                                         if (GUILayout.Button("Back", GUILayout.Width(80)))
                                             _currentPageIndex = Math.Max(-1, _currentPageIndex - 1);
                                     })
@@ -656,12 +751,14 @@ namespace akira.ToolsHub
                         }
                         else
                         {
-                            button.Action?.Invoke();
+                            btn.Action?.Invoke();
                         }
                     }
-                }
 
-                GUILayout.Space(spacing);
+                    index++;
+                }
+                
+                GUILayout.Space(sideGap);
                 EditorGUILayout.EndHorizontal();
                 GUILayout.Space(2);
             }
@@ -679,8 +776,8 @@ namespace akira.ToolsHub
         [MenuItem("Tools/Akira Tools Hub")]
         public static void ShowWindow()
         {
-            var window = GetWindow<ToolsHubManger>("Akira Tools Hub");
-            window.minSize = new Vector2(600, 900);
+            var window = GetWindow<ToolsHubManager>("Akira Tools Hub");
+            window.minSize = new Vector2(MinWidth, MinHeight);
             _instance = window;
         }
 
@@ -706,6 +803,30 @@ namespace akira.ToolsHub
             public string Label;
             public Action PageDrawAction;
             public string Tooltip;
+        }
+    }
+
+    // Auto-initialize the Tools Hub menu cache on editor load and after assembly reloads
+    [InitializeOnLoad]
+    internal static class ToolsHubAutoInit
+    {
+        static ToolsHubAutoInit()
+        {
+            // Delay call to ensure assemblies are fully loaded
+            EditorApplication.delayCall += () =>
+            {
+                ToolsHubManager.WarmupMenuCache();
+                ToolsHubManager.RefreshOpenWindowMenu();
+            };
+
+            AssemblyReloadEvents.afterAssemblyReload += () =>
+            {
+                EditorApplication.delayCall += () =>
+                {
+                    ToolsHubManager.WarmupMenuCache();
+                    ToolsHubManager.RefreshOpenWindowMenu();
+                };
+            };
         }
     }
 }

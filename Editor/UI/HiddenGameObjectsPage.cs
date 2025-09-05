@@ -18,6 +18,14 @@ namespace akira.UI
         {
             // Initialize by gathering hidden objects
             GatherHiddenObjects();
+            // Hook the global toolbar refresh to re-gather objects
+            ToolsHubManager.SetPageRefreshHandler(GatherHiddenObjects);
+        }
+
+        // Ensure refresh is rebound whenever the page becomes active again
+        public void BindRefreshHook()
+        {
+            ToolsHubManager.SetPageRefreshHandler(GatherHiddenObjects);
         }
 
         public string Title => "Hidden GameObject Tools";
@@ -28,9 +36,7 @@ namespace akira.UI
             // Action buttons
             EditorGUILayout.BeginHorizontal();
 
-            if (GUILayout.Button("Refresh", GUILayout.Height(28)))
-                GatherHiddenObjects();
-
+            // Removed page-local Refresh button; use header Refresh instead
             if (GUILayout.Button("Create Hidden Object", GUILayout.Height(28)))
             {
                 var go = new GameObject("HiddenTestObject");
@@ -119,10 +125,22 @@ namespace akira.UI
 
         public void DrawFooter()
         {
-            GUILayout.FlexibleSpace();
+            var left = new List<PageLayout.FooterButton>
+            {
+                new PageLayout.FooterButton
+                {
+                    Label = "Close",
+                    Style = PageLayout.FooterButtonStyle.Secondary,
+                    Enabled = true,
+                    OnClick = () => ToolsHubManager.ClosePage(PageOperationResult.Cancelled),
+                    MinWidth = 100
+                }
+            };
 
-            if (PageLayout.DrawActionButton("Close", 100))
-                ToolsHubManger.ClosePage(PageOperationResult.Cancelled);
+            // No right-side actions for this page
+            var right = new List<PageLayout.FooterButton>();
+
+            PageLayout.DrawFooterSplit(left, right);
         }
 
         public void OnPageResult(PageOperationResult result)
@@ -138,6 +156,13 @@ namespace akira.UI
             foreach (var go in allObjects)
                 if ((go.hideFlags & HideFlags.HideInHierarchy) != 0)
                     _hiddenObjects.Add(go);
+
+            // Ensure UI updates after refresh
+            EditorApplication.delayCall += () =>
+            {
+                if (EditorWindow.HasOpenInstances<ToolsHubManager>())
+                    EditorWindow.GetWindow<ToolsHubManager>().Repaint();
+            };
         }
 
         private bool IsHidden(GameObject go)
@@ -163,6 +188,7 @@ namespace akira.UI
         {
             if (_currentPageImpl != null)
             {
+                _currentPageImpl.BindRefreshHook();
                 _currentPageImpl.DrawPage();
             }
             else

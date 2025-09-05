@@ -28,7 +28,7 @@ namespace akira.ToolsHub
 
         public static void ShowInToolsHub(this IToolsHubPage page)
         {
-            ToolsHubManger.ShowPage(page.Title, page.DrawPage, page.OnPageResult);
+            ToolsHubManager.ShowPage(page.Title, page.DrawPage, page.OnPageResult);
         }
     }
 }

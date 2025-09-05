@@ -21,7 +21,7 @@ namespace akira.ToolsHub
             {
                 FolderHelpers.CreateFolders(RootFolder, FolderStructures.DefaultStructures["Type"]);
                 FolderHelpers.CleanupDefaultFolders();
-                ToolsHubManger.ShowNotification("Type-based folder structure created successfully", "success");
+                ToolsHubManager.ShowNotification("Type-based folder structure created successfully", "success");
             }
             catch (Exception e)
             {
@@ -38,7 +38,7 @@ namespace akira.ToolsHub
             {
                 FolderHelpers.CreateFolders(RootFolder, FolderStructures.DefaultStructures["Function"]);
                 FolderHelpers.CleanupDefaultFolders();
-                ToolsHubManger.ShowNotification("Function-based folder structure created successfully", "success");
+                ToolsHubManager.ShowNotification("Function-based folder structure created successfully", "success");
             }
             catch (Exception e)
             {
@@ -53,7 +53,7 @@ namespace akira.ToolsHub
             try
             {
                 SceneHierarchySetup.CreateBasicHierarchy();
-                ToolsHubManger.ShowNotification("Scene hierarchy setup completed", "success");
+                ToolsHubManager.ShowNotification("Scene hierarchy setup completed", "success");
             }
             catch (Exception e)
             {
@@ -66,7 +66,7 @@ namespace akira.ToolsHub
         {
             EditorSettings.enterPlayModeOptions =
                 EnterPlayModeOptions.DisableDomainReload | EnterPlayModeOptions.DisableSceneReload;
-            ToolsHubManger.ShowNotification("Domain reload disabled.", "success");
+            ToolsHubManager.ShowNotification("Domain reload disabled.", "success");
         }
     }
 }

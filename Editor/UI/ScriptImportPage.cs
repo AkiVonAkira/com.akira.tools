@@ -250,39 +250,49 @@ namespace akira.UI
 
         public void DrawFooter()
         {
-            GUILayout.FlexibleSpace();
-            PageLayout.DrawCancelButton(120);
-            GUILayout.Space(10);
-
             // Disable the button if validation fails
             var isValidExtension = _outputPath.ToLower().EndsWith(".cs") || _outputPath.ToLower().EndsWith(".asmdef");
-
             var isValid = !string.IsNullOrEmpty(_className) &&
                           !string.IsNullOrEmpty(_outputPath) &&
                           isValidExtension &&
                           !_className.Contains(" ");
 
-            EditorGUI.BeginDisabledGroup(!isValid);
-
-            var originalBg = GUI.backgroundColor;
-            GUI.backgroundColor = ButtonColor;
-
-            if (PageLayout.DrawActionButton("Import Script", 120))
+            var left = new System.Collections.Generic.List<PageLayout.FooterButton>
             {
-                if (isValid)
+                new PageLayout.FooterButton
                 {
-                    var success = ImportScript(_outputPath, _namespace);
-                    ToolsHubManger.ClosePage(success ? PageOperationResult.Success : PageOperationResult.Failure);
+                    Label = "Cancel",
+                    Style = PageLayout.FooterButtonStyle.Secondary,
+                    Enabled = true,
+                    OnClick = () => ToolsHubManager.ClosePage(PageOperationResult.Cancelled),
+                    MinWidth = 100
                 }
-                else
+            };
+
+            var right = new System.Collections.Generic.List<PageLayout.FooterButton>
+            {
+                new PageLayout.FooterButton
                 {
-                    ToolsHubManger.ClosePage(PageOperationResult.Failure);
+                    Label = "Import Script",
+                    Style = PageLayout.FooterButtonStyle.Primary,
+                    Enabled = isValid,
+                    OnClick = () =>
+                    {
+                        if (isValid)
+                        {
+                            var success = ImportScript(_outputPath, _namespace);
+                            ToolsHubManager.ClosePage(success ? PageOperationResult.Success : PageOperationResult.Failure);
+                        }
+                        else
+                        {
+                            ToolsHubManager.ClosePage(PageOperationResult.Failure);
+                        }
+                    },
+                    MinWidth = 120
                 }
-            }
+            };
 
-            GUI.backgroundColor = originalBg;
-
-            EditorGUI.EndDisabledGroup();
+            PageLayout.DrawFooterSplit(left, right);
         }
 
         // Update the OnPageResult to give more detailed information
@@ -291,15 +301,15 @@ namespace akira.UI
             if (result == PageOperationResult.Success)
             {
                 if (File.Exists(_outputPath) && _fileHasDifferences.HasValue && !_fileHasDifferences.Value)
-                    ToolsHubManger.ShowNotification(
+                    ToolsHubManager.ShowNotification(
                         $"File '{_className}' already exists with identical content. No changes made.");
                 else
-                    ToolsHubManger.ShowNotification($"Script '{_className}' imported successfully at {_outputPath}",
+                    ToolsHubManager.ShowNotification($"Script '{_className}' imported successfully at {_outputPath}",
                         "success");
             }
             else if (result == PageOperationResult.Failure)
             {
-                ToolsHubManger.ShowNotification(
+                ToolsHubManager.ShowNotification(
                     $"Failed to import script '{_className}'. Please check the console for errors.", "error");
             }
         }
@@ -353,7 +363,7 @@ namespace akira.UI
             }
             else
             {
-                ToolsHubManger.ShowNotification($"Template file not found: {_templateName}", "error");
+                ToolsHubManager.ShowNotification($"Template file not found: {_templateName}", "error");
                 Debug.LogWarning($"Template file not found: {_templatePath}");
                 _templateContent = $"// Template file not found at: {_templatePath}";
             }
@@ -439,7 +449,7 @@ namespace akira.UI
             {
                 if (!File.Exists(_templatePath))
                 {
-                    ToolsHubManger.ShowNotification($"Script template not found: {_templateName}", "error");
+                    ToolsHubManager.ShowNotification($"Script template not found: {_templateName}", "error");
                     Debug.LogError($"Script template not found: {_templatePath}");
 
                     return false;
@@ -458,7 +468,7 @@ namespace akira.UI
             }
             catch (Exception ex)
             {
-                ToolsHubManger.ShowNotification($"Error importing script: {_className}", "error");
+                ToolsHubManager.ShowNotification($"Error importing script: {_className}", "error");
                 Debug.LogError($"Error importing script: {ex.Message}");
 
                 return false;

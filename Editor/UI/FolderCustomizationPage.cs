@@ -74,6 +74,20 @@ namespace akira.UI
         public string Title => "Customize Project Folders";
         public string Description => "Enable or disable folders to include in your project structure";
 
+        // Allow page to rebind the header refresh button when active
+        public void BindRefreshHook()
+        {
+            ToolsHubManager.SetPageRefreshHandler(() =>
+            {
+                // No heavy reload needed; just repaint to keep the page active
+                EditorApplication.delayCall += () =>
+                {
+                    if (EditorWindow.HasOpenInstances<ToolsHubManager>())
+                        EditorWindow.GetWindow<ToolsHubManager>().Repaint();
+                };
+            });
+        }
+
         public void DrawContentHeader()
         {
             EditorGUILayout.BeginHorizontal();
@@ -147,8 +161,8 @@ namespace akira.UI
 
         public void DrawContentFooter()
         {
-            GUILayout.Space(10);
-
+            UIEditorUtils.DrawDividerLine();
+            
             // Folder addition input
             EditorGUILayout.BeginHorizontal();
 
@@ -195,7 +209,7 @@ namespace akira.UI
                 catch (Exception ex)
                 {
                     Debug.LogError($"Error adding folder: {ex.Message}");
-                    ToolsHubManger.ShowNotification($"Error adding folder: {ex.Message}");
+                    ToolsHubManager.ShowNotification($"Error adding folder: {ex.Message}");
                 }
 
             GUI.enabled = true;
@@ -211,7 +225,7 @@ namespace akira.UI
 
             // Draw background and border
             EditorGUI.DrawRect(foldoutRect, bgColor);
-            DrawRectBorder(foldoutRect, borderColor, 1);
+            UIEditorUtils.DrawRectBorder(foldoutRect, borderColor, 1);
 
             // Draw foldout control
             var labelRect = new Rect(foldoutRect.x + 20, foldoutRect.y, foldoutRect.width - 20, foldoutRect.height);
@@ -290,21 +304,41 @@ namespace akira.UI
 
         public void DrawFooter()
         {
-            GUILayout.FlexibleSpace();
-            PageLayout.DrawCancelButton(100);
-            GUILayout.Space(10);
-
-            if (PageLayout.DrawActionButton("Apply Changes", 120))
+            var left = new List<PageLayout.FooterButton>
             {
-                ApplyCustomFolders();
-                ToolsHubManger.ClosePage(PageOperationResult.Success);
-            }
+                new PageLayout.FooterButton
+                {
+                    Label = "Cancel",
+                    Style = PageLayout.FooterButtonStyle.Secondary,
+                    Enabled = true,
+                    OnClick = () => ToolsHubManager.ClosePage(PageOperationResult.Cancelled),
+                    MinWidth = 100
+                }
+            };
+
+            var right = new List<PageLayout.FooterButton>
+            {
+                new PageLayout.FooterButton
+                {
+                    Label = "Apply Changes",
+                    Style = PageLayout.FooterButtonStyle.Primary,
+                    Enabled = true,
+                    OnClick = () =>
+                    {
+                        ApplyCustomFolders();
+                        ToolsHubManager.ClosePage(PageOperationResult.Success);
+                    },
+                    MinWidth = 120
+                }
+            };
+
+            PageLayout.DrawFooterSplit(left, right);
         }
 
         public void OnPageResult(PageOperationResult result)
         {
             if (result == PageOperationResult.Success)
-                ToolsHubManger.ShowNotification("Folder structure updated!", "success");
+                ToolsHubManager.ShowNotification("Folder structure updated!", "success");
         }
 
         // Add a helper method to check if a folder is a parent folder (has children)
@@ -382,7 +416,7 @@ namespace akira.UI
                 }
                 catch (Exception ex)
                 {
-                    ToolsHubManger.ShowNotification("Error processing folder hierarchy", "error");
+                    ToolsHubManager.ShowNotification("Error processing folder hierarchy", "error");
                     Debug.LogError($"Error processing folder hierarchy for '{folderPath}': {ex.Message}");
                 }
 
@@ -640,16 +674,7 @@ namespace akira.UI
             // Reset color
             GUI.backgroundColor = Color.white;
         }
-
-        // Helper method to draw borders around rectangles
-        private void DrawRectBorder(Rect rect, Color color, int thickness)
-        {
-            EditorGUI.DrawRect(new Rect(rect.x, rect.y, rect.width, thickness), color);
-            EditorGUI.DrawRect(new Rect(rect.x, rect.y, thickness, rect.height), color);
-            EditorGUI.DrawRect(new Rect(rect.xMax - thickness, rect.y, thickness, rect.height), color);
-            EditorGUI.DrawRect(new Rect(rect.x, rect.yMax - thickness, rect.width, thickness), color);
-        }
-
+        
         private void ExportCurrentStructureToFile()
         {
             if (string.IsNullOrWhiteSpace(_presetName))
@@ -683,7 +708,7 @@ namespace akira.UI
             if (!string.IsNullOrEmpty(filePath))
             {
                 FolderStructureManager.ExportPresetToFile(preset, filePath);
-                ToolsHubManger.ShowNotification($"Preset exported to {filePath}", "success");
+                ToolsHubManager.ShowNotification($"Preset exported to {filePath}", "success");
             }
         }
 
@@ -707,7 +732,7 @@ namespace akira.UI
             if (!string.IsNullOrEmpty(filePath))
             {
                 FolderStructureManager.ExportPresetToFile(preset, filePath);
-                ToolsHubManger.ShowNotification($"Preset '{preset.Name}' exported successfully.", "success");
+                ToolsHubManager.ShowNotification($"Preset '{preset.Name}' exported successfully.", "success");
             }
         }
 
@@ -757,7 +782,7 @@ namespace akira.UI
                 _presetName = preset.Name;
                 _presetDescription = preset.Description;
 
-                ToolsHubManger.ShowNotification($"Preset '{preset.Name}' imported successfully.", "success");
+                ToolsHubManager.ShowNotification($"Preset '{preset.Name}' imported successfully.", "success");
             }
         }
 
@@ -789,7 +814,7 @@ namespace akira.UI
                 // Reset selection
                 _selectedPresetIndex = -1;
 
-                ToolsHubManger.ShowNotification($"Preset '{preset.Name}' deleted.", "success");
+                ToolsHubManager.ShowNotification($"Preset '{preset.Name}' deleted.", "success");
             }
         }
 
@@ -829,7 +854,7 @@ namespace akira.UI
                     _folderFoldoutStates[parentPath] = true;
                 }
 
-            ToolsHubManger.ShowNotification($"Preset '{preset.Name}' loaded.", "success");
+            ToolsHubManager.ShowNotification($"Preset '{preset.Name}' loaded.", "success");
         }
 
         private void SaveCurrentStructureAsPreset()
@@ -855,7 +880,7 @@ namespace akira.UI
             // Update selected index to point to the new preset
             _selectedPresetIndex = _availablePresets.FindIndex(p => p.Name == _presetName);
 
-            ToolsHubManger.ShowNotification($"Preset '{_presetName}' saved successfully.", "success");
+            ToolsHubManager.ShowNotification($"Preset '{_presetName}' saved successfully.", "success");
         }
 
         private void ApplyCustomFolders()
@@ -987,6 +1012,7 @@ namespace akira.UI
         {
             if (_currentPageImpl != null)
             {
+                _currentPageImpl.BindRefreshHook();
                 _currentPageImpl.DrawPage();
             }
             else
@@ -996,6 +1022,7 @@ namespace akira.UI
                     new HashSet<string> { "_Project", "_Scripts", "_Scripts/Utilities" },
                     ToolsMenu.SelectedFolderStructure
                 );
+                _currentPageImpl.BindRefreshHook();
                 _currentPageImpl.DrawPage();
             }
         }
@@ -1008,3 +1035,4 @@ namespace akira.UI
     }
 }
 #endif
+
