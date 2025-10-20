@@ -3,7 +3,7 @@ using System;
 using System.Linq;
 using System.Reflection;
 
-namespace akira.AssetStoreNative
+namespace Akira.AssetStoreNative
 {
     internal static class ReflectionUtil
     {

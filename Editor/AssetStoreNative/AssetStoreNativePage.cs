@@ -1,11 +1,11 @@
 ﻿#if UNITY_EDITOR
 using System.Collections.Generic;
-using akira.AssetStoreNative;
-using akira.ToolsHub;
+using Akira.AssetStoreNative;
+using Akira.ToolsHub;
 using UnityEditor;
 using UnityEngine;
 
-namespace akira.UI
+namespace Akira.UI
 {
     // ToolsHub page that replaces the standalone AssetStoreWindow
     public class AssetStoreNativePageImpl : IToolsHubPage

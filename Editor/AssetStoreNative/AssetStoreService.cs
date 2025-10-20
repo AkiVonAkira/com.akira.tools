@@ -7,7 +7,7 @@ using UnityEditor;
 using UnityEngine;
 using UnityEngine.Networking;
 
-namespace akira.AssetStoreNative
+namespace Akira.AssetStoreNative
 {
     // High-level API your UI can call to get ownership and download assets
     public static class AssetStoreService

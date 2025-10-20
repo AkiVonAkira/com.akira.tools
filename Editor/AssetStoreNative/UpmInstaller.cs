@@ -5,7 +5,7 @@ using UnityEditor.PackageManager;
 using UnityEditor.PackageManager.Requests;
 using UnityEngine;
 
-namespace akira.AssetStoreNative
+namespace Akira.AssetStoreNative
 {
     public static class UpmInstaller
     {

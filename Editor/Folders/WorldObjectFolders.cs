@@ -1,6 +1,6 @@
 using System.IO;
 
-namespace akira.Folders
+namespace Akira.Folders
 {
     public static class WorldObjectFolders
     {

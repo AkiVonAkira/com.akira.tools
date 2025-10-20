@@ -1,11 +1,11 @@
 ﻿#if UNITY_EDITOR
 using System;
 using System.Collections.Generic;
-using akira.ToolsHub;
+using Akira.ToolsHub;
 using UnityEditor;
 using UnityEngine;
 
-namespace akira.UI
+namespace Akira.UI
 {
     /// <summary>
     ///     Utility for standardizing page layouts in the ToolsHub.

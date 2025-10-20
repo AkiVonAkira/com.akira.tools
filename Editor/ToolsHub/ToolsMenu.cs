@@ -1,11 +1,12 @@
 #if UNITY_EDITOR
 using System;
-using akira.Folders;
-using akira.Scene;
+using Akira.Folders;
+using Akira.Scene;
+using Akira.Tools.Core;
 using UnityEditor;
 using UnityEngine;
 
-namespace akira.ToolsHub
+namespace Akira.ToolsHub
 {
     public static class ToolsMenu
     {
@@ -17,16 +18,18 @@ namespace akira.ToolsHub
         {
             SelectedFolderStructure = "Type";
 
-            try
+            ErrorHandler.Try(() =>
             {
                 FolderHelpers.CreateFolders(RootFolder, FolderStructures.DefaultStructures["Type"]);
                 FolderHelpers.CleanupDefaultFolders();
                 ToolsHubManager.ShowNotification("Type-based folder structure created successfully", "success");
-            }
-            catch (Exception e)
+            },
+            onError: (ex) =>
             {
-                Debug.LogError($"Error creating folders: {e.Message}");
-            }
+                ErrorHandler.LogErrorWithCode("FLD001", "Type-based folder structure");
+                ToolsHubManager.ShowNotification("Failed to create folder structure", "error");
+            },
+            context: "CreateTypeBasedDefaultFolders");
         }
 
         [MenuButtonItem("Setup/Folders", "Function-Based", "Create a function-based folder structure")]
@@ -34,31 +37,35 @@ namespace akira.ToolsHub
         {
             SelectedFolderStructure = "Function";
 
-            try
+            ErrorHandler.Try(() =>
             {
                 FolderHelpers.CreateFolders(RootFolder, FolderStructures.DefaultStructures["Function"]);
                 FolderHelpers.CleanupDefaultFolders();
                 ToolsHubManager.ShowNotification("Function-based folder structure created successfully", "success");
-            }
-            catch (Exception e)
+            },
+            onError: (ex) =>
             {
-                Debug.LogError($"Error creating folders: {e.Message}");
-            }
+                ErrorHandler.LogErrorWithCode("FLD001", "Function-based folder structure");
+                ToolsHubManager.ShowNotification("Failed to create folder structure", "error");
+            },
+            context: "CreateFunctionBasedDefaultFolders");
         }
 
 
         [MenuButtonItem("Setup/Scene", "Basic Hierarchy", "Create a basic scene hierarchy")]
         public static void CreateBasicSceneHierarchy()
         {
-            try
+            ErrorHandler.Try(() =>
             {
                 SceneHierarchySetup.CreateBasicHierarchy();
                 ToolsHubManager.ShowNotification("Scene hierarchy setup completed", "success");
-            }
-            catch (Exception e)
+            },
+            onError: (ex) =>
             {
-                Debug.LogError($"Error setting up scene hierarchy: {e.Message}");
-            }
+                ErrorHandler.LogError($"Error setting up scene hierarchy: {ex.Message}");
+                ToolsHubManager.ShowNotification("Failed to setup scene hierarchy", "error");
+            },
+            context: "CreateBasicSceneHierarchy");
         }
 
         [MenuButtonItem("Settings", "Disable Domain Reload", "Disable domain reload for faster play mode")]

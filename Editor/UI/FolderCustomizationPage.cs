@@ -3,12 +3,12 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using akira.Folders;
-using akira.ToolsHub;
+using Akira.Folders;
+using Akira.ToolsHub;
 using UnityEditor;
 using UnityEngine;
 
-namespace akira.UI
+namespace Akira.UI
 {
     public class FolderCustomizationPageImpl : IToolsHubPage
     {

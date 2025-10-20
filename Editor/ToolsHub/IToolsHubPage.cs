@@ -1,5 +1,5 @@
 ﻿#if UNITY_EDITOR
-namespace akira.ToolsHub
+namespace Akira.ToolsHub
 {
     public interface IToolsHubPage
     {

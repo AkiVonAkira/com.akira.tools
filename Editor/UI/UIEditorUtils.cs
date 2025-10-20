@@ -2,7 +2,7 @@
 using UnityEditor;
 using UnityEngine;
 
-namespace akira.UI
+namespace Akira.UI
 {
     /// <summary>
     /// Shared lightweight IMGUI utilities used across Tools Hub pages.

@@ -1,5 +1,5 @@
 ﻿#if UNITY_EDITOR
-namespace akira.AssetStoreNative
+namespace Akira.AssetStoreNative
 {
     // Minimal info for owned assets listing
     public class OwnedAssetInfo

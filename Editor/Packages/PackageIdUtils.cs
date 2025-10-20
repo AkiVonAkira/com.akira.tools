@@ -4,7 +4,7 @@ using System.Linq;
 using UnityEditor.PackageManager;
 using PackageInfo = UnityEditor.PackageManager.PackageInfo;
 
-namespace akira.Packages
+namespace Akira.Packages
 {
     /// <summary>
     /// Utilities for working with Unity Package IDs and Git-like identifiers.

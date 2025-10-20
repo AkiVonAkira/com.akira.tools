@@ -1,12 +1,12 @@
 ﻿#if UNITY_EDITOR
 using System;
 using System.IO;
-using akira.ToolsHub;
+using Akira.ToolsHub;
 using Editor.Files;
 using UnityEditor;
 using UnityEngine;
 
-namespace akira.UI
+namespace Akira.UI
 {
     public class ScriptImportPageImpl : IToolsHubPage
     {

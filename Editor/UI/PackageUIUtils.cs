@@ -4,13 +4,13 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEditor;
 using UnityEngine;
-using akira.Packages;
-using akira.ToolsHub;
+using Akira.Packages;
+using Akira.ToolsHub;
 using UnityEngine.Networking;
 using System.Text.RegularExpressions; // parse URLs in descriptions
 using System.Text; // StringBuilder for link coloring
 
-namespace akira.UI
+namespace Akira.UI
 {
     /// <summary>
     /// Shared UI utilities for rendering package cards and standardized tags.

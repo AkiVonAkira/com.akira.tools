@@ -2,15 +2,16 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using akira.EditorServices;
-using akira.Packages;
-using akira.ToolsHub;
+using Akira.EditorServices;
+using Akira.Packages;
+using Akira.ToolsHub;
 using UnityEditor;
 using UnityEngine;
-using ActionButton = akira.UI.PackageUIUtils.ActionButton;
-using akira.AssetStoreNative;
+using ActionButton = Akira.UI.PackageUIUtils.ActionButton;
+using Akira.AssetStoreNative;
+using Akira.Tools.Core;
 
-namespace akira.UI
+namespace Akira.UI
 {
     public class AssetStorePackagesPageImpl : IToolsHubPage
     {
@@ -401,7 +402,7 @@ namespace akira.UI
                 bool IsImportedPid(PackageEntry e)
                 {
                     if (string.IsNullOrEmpty(e.AssetStoreId) || !long.TryParse(e.AssetStoreId, out var pid)) return false;
-                    try { return AssetStoreBridge.IsImported(pid); } catch { return false; }
+                    return ErrorHandler.Try(() => AssetStoreBridge.IsImported(pid), defaultValue: false, context: $"IsImportedPid: {e.Name}");
                 }
 
                 bool IsUpdate(PackageEntry e)

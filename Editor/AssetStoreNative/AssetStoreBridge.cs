@@ -6,10 +6,11 @@ using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
 using System.IO;
+using Akira.Tools.Core;
 using UnityEditor;
 using UnityEngine;
 
-namespace akira.AssetStoreNative
+namespace Akira.AssetStoreNative
 {
     // Reflection bridge into UnityEditor.PackageManager.UI.Internal Asset Store services
     internal static class AssetStoreBridge
@@ -1197,124 +1198,199 @@ namespace akira.AssetStoreNative
         // New helper: check if a native Asset Store download is currently active for a product
         public static bool IsDownloadInProgress(long productId)
         {
-            if (!Ensure()) return false;
-            var flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
-            var resolveGeneric = _typeServicesContainer.GetMethods(flags).FirstOrDefault(m => m.Name == "Resolve" && m.IsGenericMethodDefinition);
-            if (resolveGeneric == null) return false;
-
-            var tIManager = ReflectionUtil.FindType("UnityEditor.PackageManager.UI.Internal.IAssetStoreDownloadManager");
-            var tManager = ReflectionUtil.FindType("UnityEditor.PackageManager.UI.Internal.AssetStoreDownloadManager");
-            object mgr = null;
-            try { if (tIManager != null) mgr = resolveGeneric.MakeGenericMethod(tIManager).Invoke(_servicesContainer, null); } catch { }
-            if (mgr == null && tManager != null) { try { mgr = resolveGeneric.MakeGenericMethod(tManager).Invoke(_servicesContainer, null); } catch { } }
-            if (mgr == null) return false;
-
-            try
+            return ErrorHandler.Try(() =>
             {
-                var miGet = mgr.GetType().GetMethod("GetDownloadOperation", flags);
-                if (miGet == null) return false;
-                object nullablePid = (long?)productId;
-                var op = miGet.Invoke(mgr, new object[] { nullablePid });
-                if (op == null) return false;
-                var tOp = op.GetType();
-                var inProgress = tOp.GetProperty("isInProgress", flags)?.GetValue(op) as bool?;
-                var inPause = tOp.GetProperty("isInPause", flags)?.GetValue(op) as bool?;
-                return (inProgress ?? false) || (inPause ?? false);
-            }
-            catch { return false; }
+                if (!Ensure()) return false;
+                var flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
+                var resolveGeneric = _typeServicesContainer.GetMethods(flags).FirstOrDefault(m => m.Name == "Resolve" && m.IsGenericMethodDefinition);
+                if (resolveGeneric == null) return false;
+
+                var tIManager = ReflectionUtil.FindType("UnityEditor.PackageManager.UI.Internal.IAssetStoreDownloadManager");
+                var tManager = ReflectionUtil.FindType("UnityEditor.PackageManager.UI.Internal.AssetStoreDownloadManager");
+                object mgr = null;
+                try { if (tIManager != null) mgr = resolveGeneric.MakeGenericMethod(tIManager).Invoke(_servicesContainer, null); } catch { }
+                if (mgr == null && tManager != null) { try { mgr = resolveGeneric.MakeGenericMethod(tManager).Invoke(_servicesContainer, null); } catch { } }
+                if (mgr == null) return false;
+
+                try
+                {
+                    var miGet = mgr.GetType().GetMethod("GetDownloadOperation", flags);
+                    if (miGet == null) return false;
+                    object nullablePid = (long?)productId;
+                    var op = miGet.Invoke(mgr, new object[] { nullablePid });
+                    if (op == null) return false;
+                    var tOp = op.GetType();
+                    var inProgress = tOp.GetProperty("isInProgress", flags)?.GetValue(op) as bool?;
+                    var inPause = tOp.GetProperty("isInPause", flags)?.GetValue(op) as bool?;
+                    return (inProgress ?? false) || (inPause ?? false);
+                }
+                catch { return false; }
+            },
+            defaultValue: false,
+            onError: (ex) => ErrorHandler.Log($"IsDownloadInProgress check failed for product {productId}: {ex.Message}"),
+            context: $"IsDownloadInProgress: {productId}");
         }
 
         // New: raw access to AssetStoreLocalInfo
         public static object GetLocalInfoRaw(long productId)
         {
-            if (!Ensure()) return null;
-            var flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
-            var resolveGeneric = _typeServicesContainer.GetMethods(flags).FirstOrDefault(m => m.Name == "Resolve" && m.IsGenericMethodDefinition);
-            if (resolveGeneric == null) return null;
-            var tICache = ReflectionUtil.FindType("UnityEditor.PackageManager.UI.Internal.IAssetStoreCache");
-            var tCache = ReflectionUtil.FindType("UnityEditor.PackageManager.UI.Internal.AssetStoreCache");
-            object cache = null;
-            try { if (tICache != null) cache = resolveGeneric.MakeGenericMethod(tICache).Invoke(_servicesContainer, null); } catch { }
-            if (cache == null && tCache != null)
+            return ErrorHandler.Try(() =>
             {
-                try { cache = resolveGeneric.MakeGenericMethod(tCache).Invoke(_servicesContainer, null); } catch { }
-            }
-            if (cache == null) return null;
-            var miGetLocalInfo = cache.GetType().GetMethod("GetLocalInfo", flags);
-            if (miGetLocalInfo == null) return null;
-            try
-            {
-                object nullablePid = (long?)productId;
-                return miGetLocalInfo.Invoke(cache, new object[] { nullablePid });
-            }
-            catch { return null; }
+                if (!Ensure()) return null;
+                var flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
+                var resolveGeneric = _typeServicesContainer.GetMethods(flags).FirstOrDefault(m => m.Name == "Resolve" && m.IsGenericMethodDefinition);
+                if (resolveGeneric == null) return null;
+                var tICache = ReflectionUtil.FindType("UnityEditor.PackageManager.UI.Internal.IAssetStoreCache");
+                var tCache = ReflectionUtil.FindType("UnityEditor.PackageManager.UI.Internal.AssetStoreCache");
+                object cache = null;
+                try { if (tICache != null) cache = resolveGeneric.MakeGenericMethod(tICache).Invoke(_servicesContainer, null); } catch { }
+                if (cache == null && tCache != null)
+                {
+                    try { cache = resolveGeneric.MakeGenericMethod(tCache).Invoke(_servicesContainer, null); } catch { }
+                }
+                if (cache == null) return null;
+                var miGetLocalInfo = cache.GetType().GetMethod("GetLocalInfo", flags);
+                if (miGetLocalInfo == null) return null;
+                try
+                {
+                    object nullablePid = (long?)productId;
+                    return miGetLocalInfo.Invoke(cache, new object[] { nullablePid });
+                }
+                catch { return null; }
+            },
+            defaultValue: null,
+            onError: (ex) => ErrorHandler.Log($"GetLocalInfoRaw failed for product {productId}: {ex.Message}"),
+            context: $"GetLocalInfoRaw: {productId}");
         }
 
         // New: dump local info (properties/fields) as a dictionary for diagnostics
         public static Dictionary<string, object> TryGetLocalInfoMap(long productId)
         {
-            try
+            return ErrorHandler.Try(() =>
             {
                 var obj = GetLocalInfoRaw(productId);
                 return FlattenObject(obj);
-            }
-            catch { return new Dictionary<string, object>(); }
+            },
+            defaultValue: new Dictionary<string, object>(),
+            context: $"TryGetLocalInfoMap: {productId}");
         }
 
         // New: best-effort detection whether product was imported into the project
         public static bool IsImported(long productId)
         {
-            var info = GetLocalInfoRaw(productId);
-            if (info == null) return false;
-            var t = info.GetType();
-            object GetProp(string name)
+            return ErrorHandler.Try(() =>
             {
-                try { return t.GetProperty(name, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.IgnoreCase)?.GetValue(info); } catch { return null; }
-            }
-            object GetField(string name)
-            {
-                try { return t.GetField(name, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.IgnoreCase)?.GetValue(info); } catch { return null; }
-            }
-            bool TryBool(object o, out bool b)
-            {
-                if (o is bool bb) { b = bb; return true; }
-                if (o is string s && bool.TryParse(s, out var bp)) { b = bp; return true; }
-                b = false; return false;
-            }
-            long TryLong(object o)
-            {
-                if (o is long l) return l;
-                if (o is int i) return i;
-                if (o is string s && long.TryParse(s, out var lp)) return lp;
-                return 0;
-            }
+                var info = GetLocalInfoRaw(productId);
+                if (info == null) return false;
+                var t = info.GetType();
+                object GetProp(string name)
+                {
+                    try { return t.GetProperty(name, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.IgnoreCase)?.GetValue(info); } catch { return null; }
+                }
+                object GetField(string name)
+                {
+                    try { return t.GetField(name, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.IgnoreCase)?.GetValue(info); } catch { return null; }
+                }
+                bool TryBool(object o, out bool b)
+                {
+                    if (o is bool bb) { b = bb; return true; }
+                    if (o is string s && bool.TryParse(s, out var bp)) { b = bp; return true; }
+                    b = false; return false;
+                }
+                long TryLong(object o)
+                {
+                    if (o is long l) return l;
+                    if (o is int i) return i;
+                    if (o is string s && long.TryParse(s, out var lp)) return lp;
+                    return 0;
+                }
 
-            // Common flags observed across Unity versions (guessed names; tolerant)
-            var namesBool = new[] { "isImported", "imported", "isInProject", "installed" };
-            foreach (var n in namesBool)
-            {
-                var v = GetProp(n) ?? GetField(n);
-                if (TryBool(v, out var b)) return b;
-            }
+                bool isImported = false;
 
-            // Timestamp-based heuristics
-            var stampNames = new[] { "importTimestamp", "lastImportedTime", "lastImportedTicks" };
-            foreach (var n in stampNames)
-            {
-                var v = GetProp(n) ?? GetField(n);
-                if (v != null && TryLong(v) > 0) return true;
-            }
+                // Common flags observed across Unity versions (guessed names; tolerant)
+                var namesBool = new[] { "isImported", "imported", "isInProject", "installed" };
+                foreach (var n in namesBool)
+                {
+                    var v = GetProp(n) ?? GetField(n);
+                    if (TryBool(v, out var b))
+                    {
+                        isImported = b;
+                        break;
+                    }
+                }
 
-            // Imported path recorded?
-            var pathNames = new[] { "importedPath", "lastImportedPath", "installedPath" };
-            foreach (var n in pathNames)
-            {
-                var v = (GetProp(n) ?? GetField(n)) as string;
-                if (!string.IsNullOrWhiteSpace(v)) return true;
-            }
+                // Timestamp-based heuristics
+                if (!isImported)
+                {
+                    var stampNames = new[] { "importTimestamp", "lastImportedTime", "lastImportedTicks" };
+                    foreach (var n in stampNames)
+                    {
+                        var v = GetProp(n) ?? GetField(n);
+                        if (v != null && TryLong(v) > 0)
+                        {
+                            isImported = true;
+                            break;
+                        }
+                    }
+                }
 
-            // Fallback: asset database may have imported assets tracked; not accessible here. Assume not imported.
-            return false;
+                // Imported path recorded?
+                if (!isImported)
+                {
+                    var pathNames = new[] { "importedPath", "lastImportedPath", "installedPath" };
+                    foreach (var n in pathNames)
+                    {
+                        var v = (GetProp(n) ?? GetField(n)) as string;
+                        if (!string.IsNullOrWhiteSpace(v))
+                        {
+                            isImported = true;
+                            break;
+                        }
+                    }
+                }
+
+                // If imported, try to extract and store version information
+                if (isImported)
+                {
+                    ExtractAndStoreVersionFromLocalInfo(info, productId);
+                }
+
+                return isImported;
+            },
+            defaultValue: false,
+            onError: (ex) => ErrorHandler.Log($"Failed to check IsImported for product {productId}: {ex.Message}"),
+            context: $"IsImported: {productId}");
+        }
+
+        // Helper: Extract version from LocalInfo and store in EditorPrefs
+        private static void ExtractAndStoreVersionFromLocalInfo(object localInfo, long productId)
+        {
+            ErrorHandler.Try(() =>
+            {
+                var t = localInfo.GetType();
+                var versionNames = new[] { "versionString", "version", "packageVersion", "versionId" };
+                
+                foreach (var n in versionNames)
+                {
+                    var prop = t.GetProperty(n, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.IgnoreCase);
+                    var val = prop?.GetValue(localInfo)?.ToString();
+                    if (!string.IsNullOrWhiteSpace(val))
+                    {
+                        var key = $"assetstore:{productId}";
+                        var prefKey = $"akira.assetStore.version.installed.{key}";
+                        var existing = UnityEditor.EditorPrefs.GetString(prefKey, null);
+                        
+                        // Only update if different or not set
+                        if (existing != val)
+                        {
+                            UnityEditor.EditorPrefs.SetString(prefKey, val);
+                            ErrorHandler.Log($"Stored installed version '{val}' for Asset Store product {productId}");
+                        }
+                        return;
+                    }
+                }
+            },
+            context: $"ExtractAndStoreVersionFromLocalInfo: {productId}");
         }
     }
 }

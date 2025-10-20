@@ -1,53 +1,64 @@
 using System.IO;
+using Akira.Tools.Core;
 using UnityEngine;
 using static UnityEditor.AssetDatabase;
 
-namespace akira.Folders
+namespace Akira.Folders
 {
     public static class FolderHelpers
     {
         public static void CreateFolders(string rootPath, params string[] folders)
         {
-            var fullPath = Path.Combine(Application.dataPath, rootPath);
-            if (!Directory.Exists(fullPath)) Directory.CreateDirectory(fullPath);
-
-            foreach (var folder in folders)
+            ErrorHandler.Try(() =>
             {
-                var path = Path.Combine(fullPath, folder.Replace('/', Path.DirectorySeparatorChar));
-                Directory.CreateDirectory(path);
-            }
+                var fullPath = Path.Combine(Application.dataPath, rootPath);
+                if (!Directory.Exists(fullPath)) Directory.CreateDirectory(fullPath);
 
-            CreateAssemblyDefinition(rootPath);
-            Refresh();
+                foreach (var folder in folders)
+                {
+                    var path = Path.Combine(fullPath, folder.Replace('/', Path.DirectorySeparatorChar));
+                    Directory.CreateDirectory(path);
+                }
+
+                CreateAssemblyDefinition(rootPath);
+                Refresh();
+            },
+            onError: (ex) => ErrorHandler.LogErrorWithCode("FLD001", $"Root path: {rootPath}"),
+            context: $"CreateFolders: {rootPath}");
         }
 
         private static void CreateAssemblyDefinition(string rootPath)
         {
-            var packageName = "com.akira.tools";
-
-            var txtPath = Path.Combine(
-                Application.dataPath,
-                "../Packages",
-                packageName,
-                "Scripts/ProjectAsmdef.txt"
-            );
-
-            var outputPath = Path.Combine(
-                Application.dataPath,
-                rootPath,
-                "_Scripts",
-                "_Project.asmdef"
-            );
-
-            var scriptsFolder = Path.Combine(Application.dataPath, rootPath, "_Scripts");
-
-            if (!Directory.Exists(scriptsFolder)) Directory.CreateDirectory(scriptsFolder);
-
-            if (!File.Exists(outputPath))
+            ErrorHandler.Try(() =>
             {
-                File.Copy(txtPath, outputPath);
-                Debug.Log($"Created assembly definition at: {outputPath}");
-            }
+                var packageName = "com.akira.tools";
+
+                var txtPath = Path.Combine(
+                    Application.dataPath,
+                    "../Packages",
+                    packageName,
+                    "Scripts/ProjectAsmdef.txt"
+                );
+
+                var outputPath = Path.Combine(
+                    Application.dataPath,
+                    rootPath,
+                    "_Scripts",
+                    "_Project.asmdef"
+                );
+
+                var scriptsFolder = Path.Combine(Application.dataPath, rootPath, "_Scripts");
+
+                if (!Directory.Exists(scriptsFolder)) Directory.CreateDirectory(scriptsFolder);
+
+                if (!File.Exists(outputPath))
+                {
+                    File.Copy(txtPath, outputPath);
+                    ErrorHandler.Log($"Created assembly definition at: {outputPath}");
+                }
+            },
+            onError: (ex) => ErrorHandler.LogErrorWithCode("FLD001", $"Assembly definition creation failed for: {rootPath}"),
+            context: "CreateAssemblyDefinition");
         }
 
         private static void Move(string newParent, string folderName)
@@ -81,7 +92,7 @@ namespace akira.Folders
                 }
 
                 DeleteAsset(sourcePath);
-                Debug.Log($"Merged {folderName} into {destinationPath}");
+                ErrorHandler.Log($"Merged {folderName} into {destinationPath}");
 
                 return;
             }
@@ -89,7 +100,7 @@ namespace akira.Folders
             var error = MoveAsset(sourcePath, destinationPath);
 
             if (!string.IsNullOrEmpty(error))
-                Debug.LogError($"Failed to move {folderName}: {error}");
+                ErrorHandler.LogError($"Failed to move {folderName}: {error}");
         }
 
         private static void Delete(string folderName)

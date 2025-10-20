@@ -1,7 +1,7 @@
 ﻿#if UNITY_EDITOR
-using akira.UI;
+using Akira.UI;
 
-namespace akira.ToolsHub
+namespace Akira.ToolsHub
 {
     public static class ToolsHubPageExtensions
     {

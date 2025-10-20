@@ -4,14 +4,14 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using akira.Packages;
-using akira.ToolsHub;
+using Akira.Packages;
+using Akira.ToolsHub;
 using TMPro;
 using UnityEditor;
 using UnityEngine;
-using UnityEditor.PackageManager; // added for PackageSource
+using UnityEditor.PackageManager;
 
-namespace akira.UI
+namespace Akira.UI
 {
     public class EssentialPackagesPageImpl : IToolsHubPage
     {

@@ -3,10 +3,11 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using akira.Packages;
+using Akira.Packages;
+using Akira.Tools.Core;
 using UnityEngine;
 
-namespace akira.ToolsHub
+namespace Akira.ToolsHub
 {
     [Serializable]
     public class FoldoutStateEntry
@@ -171,18 +172,19 @@ namespace akira.ToolsHub
             EnsureSaveFolder();
 
             if (File.Exists(SettingsPath))
-                try
+                ErrorHandler.Try(() =>
                 {
                     var json = File.ReadAllText(SettingsPath);
                     _data = JsonUtility.FromJson<ToolsHubSettingsData>(json) ?? new ToolsHubSettingsData();
                     ValidateSettings();
-                }
-                catch (Exception ex)
+                },
+                onError: (ex) =>
                 {
                     ToolsHubManager.ShowNotification("Error loading settings - creating new settings file", "warning");
-                    Debug.LogError($"Error loading ToolsHub settings: {ex.Message}. Creating new settings file.");
+                    ErrorHandler.LogError($"Error loading ToolsHub settings: {ex.Message}. Creating new settings file.");
                     _data = new ToolsHubSettingsData();
-                }
+                },
+                context: "Load ToolsHub Settings");
             else
                 _data = new ToolsHubSettingsData();
         }
@@ -229,23 +231,32 @@ namespace akira.ToolsHub
 
         public static void Save()
         {
-            EnsureSaveFolder();
-            var json = JsonUtility.ToJson(_data, true);
-            File.WriteAllText(SettingsPath, json);
+            ErrorHandler.Try(() =>
+            {
+                EnsureSaveFolder();
+                var json = JsonUtility.ToJson(_data, true);
+                File.WriteAllText(SettingsPath, json);
+            },
+            onError: (ex) => ErrorHandler.LogError($"Failed to save ToolsHub settings: {ex.Message}"),
+            context: "Save ToolsHub Settings");
         }
 
         private static void EnsureSaveFolder()
         {
-            var dir = Path.GetDirectoryName(SettingsPath);
+            ErrorHandler.Try(() =>
+            {
+                var dir = Path.GetDirectoryName(SettingsPath);
 
-            if (!Directory.Exists(dir))
-                Directory.CreateDirectory(dir);
+                if (!Directory.Exists(dir))
+                    Directory.CreateDirectory(dir);
+            },
+            onError: (ex) => ErrorHandler.LogError($"Failed to create settings directory: {ex.Message}"),
+            context: "EnsureSaveFolder");
         }
 
         // ---- Default Asset Store entries ----
         private static readonly string[] DefaultAssets = {
             "https://assetstore.unity.com/packages/tools/utilities/better-hierarchy-272963",
-            "https://assetstore.unity.com/packages/tools/utilities/ui-preview-for-prefabs-and-canvases-226906",
             "https://assetstore.unity.com/packages/tools/utilities/mouse-button-shortcuts-and-selection-history-228013",
             "https://assetstore.unity.com/packages/tools/utilities/better-transform-size-notes-global-local-workspace-parent-child--321300",
             "https://assetstore.unity.com/packages/tools/utilities/better-mesh-mesh-preview-full-insight-at-a-glance-321364",
@@ -310,16 +321,18 @@ namespace akira.ToolsHub
 
         private static string BuildAssetIdFromUrl(string url)
         {
-            if (string.IsNullOrWhiteSpace(url)) return null;
-            try
+            return ErrorHandler.Try(() =>
             {
+                if (string.IsNullOrWhiteSpace(url)) return null;
+                
                 var u = url.Trim();
                 if (u.EndsWith("/")) u = u.Substring(0, u.Length - 1);
                 var last = u.Split('/').LastOrDefault();
                 if (!string.IsNullOrEmpty(last)) return $"assetstore:{last}";
                 return $"assetstore:{u.GetHashCode()}";
-            }
-            catch { return $"assetstore:{url.GetHashCode()}"; }
+            },
+            defaultValue: $"assetstore:{url?.GetHashCode() ?? 0}",
+            context: "BuildAssetIdFromUrl");
         }
     }
 }

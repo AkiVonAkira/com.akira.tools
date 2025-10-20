@@ -2,7 +2,7 @@
 using System;
 using System.Reflection;
 
-namespace akira.EditorServices
+namespace Akira.EditorServices
 {
     // Lightweight helper for detecting Unity Editor sign-in state without taking a hard dependency
     public static class EditorAccount

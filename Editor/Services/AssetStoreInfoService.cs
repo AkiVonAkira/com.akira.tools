@@ -2,15 +2,16 @@
 using System;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
-using akira.Packages;
-using akira.ToolsHub;
+using Akira.Packages;
+using Akira.ToolsHub;
+using Akira.Tools.Core;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.Networking;
 using System.Globalization;
 using UnityEditor.PackageManager;
 
-namespace akira.EditorServices
+namespace Akira.EditorServices
 {
     /// <summary>
     /// Fetches Asset Store page metadata (price/free) using UnityWebRequest and updates PackageEntry.
@@ -65,18 +66,16 @@ namespace akira.EditorServices
                 ToolsHubSettings.Save();
             }
 
-            try
+            ErrorHandler.Try(() =>
             {
                 var req = UnityWebRequest.Get(entry.AssetStoreUrl);
                 req.timeout = 10; // seconds
                 req.SendWebRequest();
                 Active.Add(new FetchOp { Id = entry.Id, Url = entry.AssetStoreUrl, Req = req });
                 EnsureUpdateHook();
-            }
-            catch (Exception ex)
-            {
-                Debug.LogWarning($"AssetStoreInfoService: failed to start request for {entry.AssetStoreUrl}: {ex.Message}");
-            }
+            },
+            onError: (ex) => ErrorHandler.LogWarning($"AssetStoreInfoService: failed to start request for {entry.AssetStoreUrl}: {ex.Message}"),
+            context: $"InternalQueue: {entry.AssetStoreUrl}");
         }
 
         public static bool IsStale(PackageEntry entry)
@@ -108,75 +107,92 @@ namespace akira.EditorServices
                     if (req.result == UnityWebRequest.Result.Success)
                     {
                         var html = req.downloadHandler.text;
+                        
+                        // Check if asset has been removed from the store
+                        if (IsAssetRemoved(html))
+                        {
+                            var pe = ToolsHubSettings.GetPackage(f.Id);
+                            if (pe != null)
+                            {
+                                pe.Description = "⚠️ This asset has been removed from the Asset Store.";
+                                pe.Price = "REMOVED";
+                                pe.IsFree = null;
+                                pe.LastAssetFetchUnixSeconds = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                                ToolsHubSettings.AddOrUpdatePackage(pe);
+                                ToolsHubSettings.Save();
+                                ErrorHandler.LogWarning($"Asset has been removed from Asset Store: {f.Url}");
+                            }
+                            continue;
+                        }
+                        
                         var (priceLabel, isFree) = ParsePrice(html);
 
-                        var pe = ToolsHubSettings.GetPackage(f.Id);
-                        if (pe != null)
+                        var pe2 = ToolsHubSettings.GetPackage(f.Id);
+                        if (pe2 != null)
                         {
                             // Interpret 0/0.00 as free even if label not FREE
                             var isZero = IsZeroPrice(priceLabel);
                             if (isZero) isFree = true;
 
-                            if (isFree.HasValue) pe.IsFree = isFree.Value;
+                            if (isFree.HasValue) pe2.IsFree = isFree.Value;
                             if (!string.IsNullOrWhiteSpace(priceLabel))
-                                pe.Price = isZero ? "FREE" : NormalizePrice(priceLabel);
+                                pe2.Price = isZero ? "FREE" : NormalizePrice(priceLabel);
 
                             // Parse extended metadata
                             // Prefer og:title from the page; override any early heuristic title
                             var ogTitle = ExtractMeta(html, "og:title");
                             if (!string.IsNullOrWhiteSpace(ogTitle))
-                                pe.AssetTitle = NormalizeTitle(ogTitle);
+                                pe2.AssetTitle = NormalizeTitle(ogTitle);
 
                             // Prefer a richer Overview from the page body; fallback to og:description
                             var overview = ExtractOverviewFromHtml(html);
                             if (!string.IsNullOrWhiteSpace(overview))
                             {
-                                pe.Description = TruncateWords(overview, 200);
+                                pe2.Description = TruncateWords(overview, 200);
                             }
                             else
                             {
                                 var ogDesc = ExtractMeta(html, "og:description");
-                                if (string.IsNullOrWhiteSpace(pe.Description) && !string.IsNullOrWhiteSpace(ogDesc))
-                                    pe.Description = ogDesc;
+                                if (string.IsNullOrWhiteSpace(pe2.Description) && !string.IsNullOrWhiteSpace(ogDesc))
+                                    pe2.Description = ogDesc;
                             }
 
-                            pe.AssetImageUrl ??= ExtractMeta(html, "og:image");
-                            pe.AssetAuthor ??= ExtractAuthor(html);
+                            pe2.AssetImageUrl ??= ExtractMeta(html, "og:image");
+                            pe2.AssetAuthor ??= ExtractAuthor(html);
 
-                            pe.UpmPackageId ??= ExtractUpmId(html);
+                            pe2.UpmPackageId ??= ExtractUpmId(html);
 
                             // Category from URL (e.g., /packages/tools/utilities/...)
-                            pe.AssetCategory ??= ExtractCategoryFromUrl(f.Url);
-                            if (!string.IsNullOrEmpty(pe.AssetCategory))
+                            pe2.AssetCategory ??= ExtractCategoryFromUrl(f.Url);
+                            if (!string.IsNullOrEmpty(pe2.AssetCategory))
                             {
                                 // Also add category tokens into ExtraTags for chips (top-level and subcategory)
-                                var parts = pe.AssetCategory.Split('/');
-                                pe.ExtraTags ??= new List<string>();
+                                var parts = pe2.AssetCategory.Split('/');
+                                pe2.ExtraTags ??= new List<string>();
                                 foreach (var token in parts)
                                 {
                                     var label = token.Trim();
-                                    if (!string.IsNullOrEmpty(label) && !pe.ExtraTags.Contains(label))
-                                        pe.ExtraTags.Add(label);
+                                    if (!string.IsNullOrEmpty(label) && !pe2.ExtraTags.Contains(label))
+                                        pe2.ExtraTags.Add(label);
                                 }
                             }
 
                             // Stamp last fetched time
-                            pe.LastAssetFetchUnixSeconds = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                            pe2.LastAssetFetchUnixSeconds = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
-                            ToolsHubSettings.AddOrUpdatePackage(pe);
+                            ToolsHubSettings.AddOrUpdatePackage(pe2);
                             ToolsHubSettings.Save();
                         }
                     }
                     else
                     {
                         // Leave existing fields as-is; this is best-effort
-                        if (Debug.isDebugBuild)
-                            Debug.LogWarning($"AssetStoreInfoService: request failed for {f.Url}: {req.error}");
+                        ErrorHandler.Log($"AssetStoreInfoService: request failed for {f.Url}: {req.error}");
                     }
                 }
                 catch (Exception ex)
                 {
-                    Debug.LogWarning($"AssetStoreInfoService: error processing response for {f.Url}: {ex.Message}");
+                    ErrorHandler.LogWarning($"AssetStoreInfoService: error processing response for {f.Url}: {ex.Message}");
                 }
                 finally
                 {
@@ -205,7 +221,7 @@ namespace akira.EditorServices
         {
             if (string.IsNullOrEmpty(html)) return (null, null);
 
-            try
+            return ErrorHandler.Try<(string, bool?)>(() =>
             {
                 // JSON-LD price field
                 var m1 = Regex.Match(html, @"""price""\s*:\s*""(?<p>[^""]+)""", RegexOptions.IgnoreCase);
@@ -214,7 +230,7 @@ namespace akira.EditorServices
                     var p = m1.Groups["p"].Value.Trim();
                     var norm = NormalizePrice(p);
                     if (!string.IsNullOrEmpty(norm))
-                        return (norm, IsFreeLabel(norm) || IsZeroPrice(norm));
+                        return (norm, (bool?)(IsFreeLabel(norm) || IsZeroPrice(norm)));
                 }
 
                 // Inline label with FREE or currency + amount
@@ -223,7 +239,7 @@ namespace akira.EditorServices
                 {
                     var p = m2.Groups["p"].Value.Trim();
                     var norm = NormalizePrice(p);
-                    return (norm, IsFreeLabel(norm) || IsZeroPrice(norm));
+                    return (norm, (bool?)(IsFreeLabel(norm) || IsZeroPrice(norm)));
                 }
 
                 // Nearby "price" token followed by a value
@@ -232,12 +248,13 @@ namespace akira.EditorServices
                 {
                     var p = Regex.Match(m3.Value, @"([$€£]\s?\d+[\d\.,]*|FREE|Free)", RegexOptions.IgnoreCase).Value;
                     var norm = NormalizePrice(p);
-                    return (norm, IsFreeLabel(norm) || IsZeroPrice(norm));
+                    return (norm, (bool?)(IsFreeLabel(norm) || IsZeroPrice(norm)));
                 }
-            }
-            catch { /* ignore and fall through */ }
-
-            return (null, null);
+                
+                return ((string)null, (bool?)null);
+            },
+            defaultValue: (null, null),
+            context: "ParsePrice");
         }
 
         private static string NormalizePrice(string raw)
@@ -279,7 +296,7 @@ namespace akira.EditorServices
 
         private static string TryParseProductId(string url)
         {
-            try
+            return ErrorHandler.Try(() =>
             {
                 // Typical URL: https://assetstore.unity.com/packages/slug-name-123456
                 var uri = new Uri(url);
@@ -290,14 +307,15 @@ namespace akira.EditorServices
                     var m = Regex.Match(last, @"-(?<id>\d+)$");
                     if (m.Success) return m.Groups["id"].Value;
                 }
-            }
-            catch { /* ignore */ }
-            return null;
+                return null;
+            },
+            defaultValue: null,
+            context: "TryParseProductId");
         }
 
         private static string ExtractMeta(string html, string property)
         {
-            try
+            return ErrorHandler.Try(() =>
             {
                 // <meta property="og:title" content="...">
                 var rx = new Regex($@"<meta[^>]+property=""{Regex.Escape(property)}""[^>]*content=""(?<c>[^""]+)""", RegexOptions.IgnoreCase);
@@ -308,14 +326,16 @@ namespace akira.EditorServices
                 rx = new Regex($@"<meta[^>]+name=""{Regex.Escape(property)}""[^>]*content=""(?<c>[^""]+)""", RegexOptions.IgnoreCase);
                 m = rx.Match(html);
                 if (m.Success) return System.Net.WebUtility.HtmlDecode(m.Groups["c"].Value);
-            }
-            catch { }
-            return null;
+                
+                return null;
+            },
+            defaultValue: null,
+            context: $"ExtractMeta: {property}");
         }
 
         private static string ExtractAuthor(string html)
         {
-            try
+            return ErrorHandler.Try(() =>
             {
                 // JSON-LD brand name: "brand":{"@type":"Brand","name":"Author"}
                 var m = Regex.Match(html, @"""brand""\s*:\s*\{[^}]*""name""\s*:\s*""(?<a>[^""\\]+)""", RegexOptions.IgnoreCase);
@@ -329,14 +349,16 @@ namespace akira.EditorServices
                 // data-test publisher name
                 var m3 = Regex.Match(html, @"data-test=""publisher-name""[^>]*>\s*<[^>]*>\s*(?<n>[^<]+)<", RegexOptions.IgnoreCase);
                 if (m3.Success) return System.Net.WebUtility.HtmlDecode(m3.Groups["n"].Value.Trim());
-            }
-            catch { }
-            return null;
+                
+                return null;
+            },
+            defaultValue: null,
+            context: "ExtractAuthor");
         }
 
         private static string ExtractUpmId(string html)
         {
-            try
+            return ErrorHandler.Try(() =>
             {
                 // Look for com.company.packagename style tokens. Prefer those around "upm" or "package" context.
                 var ctx = Regex.Match(html, @"(?<ctx>(upm|package)[^<>{}]{0,200})com\.[a-z0-9\._-]+", RegexOptions.IgnoreCase);
@@ -348,16 +370,18 @@ namespace akira.EditorServices
                 // Fallback: first com.* looking id
                 var m = Regex.Match(html, @"com\.[a-z0-9\._-]+", RegexOptions.IgnoreCase);
                 if (m.Success) return m.Value;
-            }
-            catch { }
-            return null;
+                
+                return null;
+            },
+            defaultValue: null,
+            context: "ExtractUpmId");
         }
 
         private static string ExtractCategoryFromUrl(string url)
         {
-            // Expecting: https://assetstore.unity.com/packages/<cat>/<subcat>/slug-id
-            try
+            return ErrorHandler.Try(() =>
             {
+                // Expecting: https://assetstore.unity.com/packages/<cat>/<subcat>/slug-id
                 var uri = new Uri(url);
                 var segs = uri.AbsolutePath.Trim('/').Split('/');
                 var idx = Array.FindIndex(segs, s => string.Equals(s, "packages", StringComparison.OrdinalIgnoreCase));
@@ -376,9 +400,10 @@ namespace akira.EditorServices
                     if (!string.IsNullOrEmpty(c1) && !string.IsNullOrEmpty(c2)) return $"{c1}/{c2}";
                     if (!string.IsNullOrEmpty(c1)) return c1;
                 }
-            }
-            catch { }
-            return null;
+                return null;
+            },
+            defaultValue: null,
+            context: "ExtractCategoryFromUrl");
         }
 
         private static string NormalizeTitle(string title)
@@ -397,7 +422,7 @@ namespace akira.EditorServices
         private static string ExtractOverviewFromHtml(string html)
         {
             if (string.IsNullOrEmpty(html)) return null;
-            try
+            return ErrorHandler.Try(() =>
             {
                 // 0) Explicit Overview container by id="description-panel" (author-written description)
                 var descPanel = Regex.Match(html, @"id=""description-panel""[^>]*>(?<c>[\s\S]*?)</div>", RegexOptions.IgnoreCase);
@@ -439,15 +464,17 @@ namespace akira.EditorServices
                     var text = HtmlToPlainText(raw);
                     if (!string.IsNullOrWhiteSpace(text)) return text;
                 }
-            }
-            catch { }
-            return null;
+                
+                return null;
+            },
+            defaultValue: null,
+            context: "ExtractOverviewFromHtml");
         }
 
         private static string HtmlToPlainText(string html)
         {
             if (string.IsNullOrEmpty(html)) return html;
-            try
+            return ErrorHandler.Try(() =>
             {
                 // Remove scripts/styles
                 html = Regex.Replace(html, @"<script[\s\S]*?</script>", string.Empty, RegexOptions.IgnoreCase);
@@ -462,8 +489,42 @@ namespace akira.EditorServices
                 // Collapse whitespace
                 text = Regex.Replace(text, @"\s+", " ").Trim();
                 return text;
-            }
-            catch { return html; }
+            },
+            defaultValue: html,
+            context: "HtmlToPlainText");
+        }
+
+        private static bool IsAssetRemoved(string html)
+        {
+            if (string.IsNullOrEmpty(html)) return false;
+            
+            return ErrorHandler.Try(() =>
+            {
+                // Check for common patterns indicating asset removal
+                // Pattern 1: "Asset not found" or similar messages
+                if (Regex.IsMatch(html, @"(asset|package|product)\s+(not\s+found|unavailable|removed|deleted|no\s+longer\s+available)", RegexOptions.IgnoreCase))
+                    return true;
+                
+                // Pattern 2: 404 page indicators
+                if (Regex.IsMatch(html, @"404|page\s+not\s+found", RegexOptions.IgnoreCase) && 
+                    html.Length < 10000) // Short pages are likely error pages
+                    return true;
+                
+                // Pattern 3: Redirect to store homepage or error page
+                if (Regex.IsMatch(html, @"<title>[^<]*?(error|not\s+found|unavailable)[^<]*?</title>", RegexOptions.IgnoreCase))
+                    return true;
+                
+                // Pattern 4: Check if the page has no price and no typical asset store content
+                var hasAssetContent = Regex.IsMatch(html, @"(publisher|rating|description-panel|asset-store-metadata)", RegexOptions.IgnoreCase);
+                var hasPrice = Regex.IsMatch(html, @"(price|FREE|\$\d+|€\d+|£\d+)", RegexOptions.IgnoreCase);
+                
+                if (!hasAssetContent && !hasPrice && html.Length > 500)
+                    return true;
+                
+                return false;
+            },
+            defaultValue: false,
+            context: "IsAssetRemoved");
         }
 
         private static string TruncateWords(string text, int maxWords)

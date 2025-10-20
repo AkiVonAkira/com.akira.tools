@@ -1,11 +1,11 @@
 #if UNITY_EDITOR
 using System.Collections.Generic;
-using akira.ToolsHub;
+using Akira.ToolsHub;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 
-namespace akira.UI
+namespace Akira.UI
 {
     public class HiddenGameObjectsPageImpl : IToolsHubPage
     {

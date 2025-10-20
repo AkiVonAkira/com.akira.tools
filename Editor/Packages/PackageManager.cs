@@ -4,14 +4,15 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using akira.ToolsHub;
+using Akira.ToolsHub;
+using Akira.Tools.Core;
 using UnityEditor;
 using UnityEditor.PackageManager;
 using UnityEditor.PackageManager.Requests;
 using UnityEngine;
 using PackageInfo = UnityEditor.PackageManager.PackageInfo;
 
-namespace akira.Packages
+namespace Akira.Packages
 {
     public static class PackageManager
     {
@@ -125,7 +126,7 @@ namespace akira.Packages
                         {
                             var label = GetPackageNameFromId(packageId, request.Result);
                             ToolsHubManager.ShowNotification($"Failed to install {label}: {request.Error.message}", "error");
-                            Debug.LogError($"Failed to install package {packageId}: {request.Error.message}");
+                            ErrorHandler.LogError($"Failed to install package {packageId}: {request.Error.message}");
                         }
                     }
                     else
@@ -159,20 +160,21 @@ namespace akira.Packages
         {
             if (string.IsNullOrEmpty(packageId)) return;
 
-            try
+            ErrorHandler.Try(() =>
             {
                 // Create the request on the main thread
                 var addArg = PackageIdUtils.NormalizeForAdd(packageId);
                 var request = Client.Add(addArg);
                 _activeAddRequests[packageId] = request;
-            }
-            catch (Exception ex)
+            },
+            onError: (ex) =>
             {
                 var label = GetPackageNameFromId(packageId);
                 ToolsHubManager.ShowNotification($"Error adding {label}", "error");
-                Debug.LogError($"Error creating add request for {packageId}: {ex.Message}");
+                ErrorHandler.LogErrorWithCode("PKG003", $"Package: {packageId}");
                 OnPackageInstallError?.Invoke(packageId);
-            }
+            },
+            context: $"AddPackageRequest: {packageId}");
         }
 
         // Install a single package
@@ -186,7 +188,7 @@ namespace akira.Packages
             OnPackageInstallProgress?.Invoke(packageId, 0f);
             _processRequests = true;
 
-            try
+            ErrorHandler.Try(() =>
             {
                 // Create the request on the main thread
                 var addArg = PackageIdUtils.NormalizeForAdd(packageId);
@@ -220,7 +222,7 @@ namespace akira.Packages
                         else if (request.Error != null)
                         {
                             ToolsHubManager.ShowNotification($"Failed to install {label}", "error");
-                            Debug.LogError($"Failed to install package {packageId}: {request.Error.message}");
+                            ErrorHandler.LogError($"Failed to install package {packageId}: {request.Error.message}");
                             OnPackageInstallError?.Invoke(packageId);
                         }
 
@@ -239,14 +241,15 @@ namespace akira.Packages
                         OnPackageInstallProgress?.Invoke(packageId, 0.5f);
                     }
                 }
-            }
-            catch (Exception ex)
+            },
+            onError: (ex) =>
             {
                 var label = GetPackageNameFromId(packageId);
                 ToolsHubManager.ShowNotification($"Error installing {label}", "error");
-                Debug.LogError($"Error installing package {packageId}: {ex.Message}");
+                ErrorHandler.LogErrorWithCode("PKG003", $"Package: {packageId}");
                 OnPackageInstallError?.Invoke(packageId);
-            }
+            },
+            context: $"InstallPackage: {packageId}");
         }
 
         // Remove a package
@@ -258,7 +261,7 @@ namespace akira.Packages
                 return;
             }
 
-            try
+            await ErrorHandler.TryAsync(async () =>
             {
                 // Resolve to installed package name for Git/URL inputs
                 string idForRemoval = packageId;
@@ -308,7 +311,7 @@ namespace akira.Packages
                         else if (request.Error != null)
                         {
                             ToolsHubManager.ShowNotification($"Failed to remove {label}", "error");
-                            Debug.LogError($"Failed to remove package {idForRemoval}: {request.Error.message}");
+                            ErrorHandler.LogError($"Failed to remove package {idForRemoval}: {request.Error.message}");
                         }
 
                         _activeRemoveRequests.Remove(idForRemoval);
@@ -317,14 +320,15 @@ namespace akira.Packages
                         EditorApplication.update -= CheckProgress;
                     }
                 }
-            }
-            catch (Exception ex)
+            },
+            onError: (ex) =>
             {
                 var label = GetPackageNameFromId(packageId);
                 ToolsHubManager.ShowNotification($"Error removing {label}", "error");
-                Debug.LogError($"Error removing package {packageId}: {ex.Message}");
+                ErrorHandler.LogErrorWithCode("PKG003", $"Package: {packageId}");
                 onComplete?.Invoke(false);
-            }
+            },
+            context: $"RemovePackage: {packageId}");
         }
 
         // Check if a package is installed
@@ -415,7 +419,7 @@ namespace akira.Packages
 
             _refreshingPackageCache = true;
 
-            try
+            ErrorHandler.Try(() =>
             {
                 // Create the list request on the main thread
                 _activeListRequest = Client.List(true); // true for includeIndirectDependencies
@@ -435,7 +439,7 @@ namespace akira.Packages
                     if (timeoutTask.IsCompleted && !timeoutTask.IsCanceled)
                     {
                         // Timeout occurred
-                        if (Debug.isDebugBuild) Debug.LogWarning("Package listing request timed out");
+                        ErrorHandler.LogWarning("Package listing request timed out");
                         _refreshingPackageCache = false;
                         EditorApplication.update -= CheckProgress;
                         tcs.TrySetResult(false);
@@ -451,20 +455,17 @@ namespace akira.Packages
                         {
                             _installedPackagesCache = new Dictionary<string, PackageInfo>();
 
-                            // Log all found packages to help diagnose issues (only in debug builds)
-                            if (Debug.isDebugBuild)
-                            {
-                                Debug.Log(
-                                    $"Package refresh complete. Found {_activeListRequest.Result.Count()} packages.");
+                            // Log all found packages to help diagnose issues
+                            ErrorHandler.Log($"Package refresh complete. Found {_activeListRequest.Result.Count()} packages.");
 
-                                foreach (var package in _activeListRequest.Result)
-                                    // Debug package information for Git packages
-                                    if (package.source is PackageSource.Git or PackageSource.Embedded)
-                                        Debug.Log(
-                                            $"Found Git/Embedded package - Name: {package.name}, ID: {package.packageId}, Source: {package.source}");
+                            foreach (var package in _activeListRequest.Result)
+                            {
+                                // Debug package information for Git packages
+                                if (package.source is PackageSource.Git or PackageSource.Embedded)
+                                    ErrorHandler.Log($"Found Git/Embedded package - Name: {package.name}, ID: {package.packageId}, Source: {package.source}");
                             }
 
-                            // Always build the cache, but only log in debug builds
+                            // Build the cache
                             foreach (var package in _activeListRequest.Result)
                                 _installedPackagesCache[package.name] = package;
 
@@ -474,7 +475,7 @@ namespace akira.Packages
                         else if (_activeListRequest.Error != null)
                         {
                             ToolsHubManager.ShowNotification("Failed to list packages", "error");
-                            Debug.LogError($"Failed to list packages: {_activeListRequest.Error.message}");
+                            ErrorHandler.LogError($"Failed to list packages: {_activeListRequest.Error.message}");
                             tcs.TrySetResult(false);
                         }
                         else
@@ -486,14 +487,15 @@ namespace akira.Packages
                         EditorApplication.update -= CheckProgress;
                     }
                 }
-            }
-            catch (Exception ex)
+            },
+            onError: (ex) =>
             {
                 ToolsHubManager.ShowNotification("Error refreshing package information", "error");
-                Debug.LogError($"Error refreshing package cache: {ex.Message}");
+                ErrorHandler.LogErrorWithCode("PKG001", "Failed to refresh package cache");
                 _refreshingPackageCache = false;
                 tcs.TrySetResult(false);
-            }
+            },
+            context: "RefreshPackageCache");
 
             return tcs.Task;
         }

@@ -4,14 +4,14 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using akira.UI;
+using Akira.UI;
 using Editor.Files;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
 using Object = UnityEngine.Object;
 
-namespace akira.ToolsHub
+namespace Akira.ToolsHub
 {
     [AttributeUsage(AttributeTargets.Method)]
     public class MenuButtonItemAttribute : Attribute

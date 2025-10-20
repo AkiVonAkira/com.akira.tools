@@ -3,11 +3,11 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using akira.ToolsHub;
+using Akira.ToolsHub;
 using UnityEditor;
 using UnityEngine;
 
-namespace akira.Folders
+namespace Akira.Folders
 {
     [Serializable]
     public class FolderStructurePreset

@@ -5,7 +5,7 @@ using UnityEngine.SceneManagement;
 
 #if UNITY_EDITOR
 
-namespace akira.Scene
+namespace Akira.Scene
 {
     public static class SceneHierarchySetup
     {

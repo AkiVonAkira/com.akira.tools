@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 
-namespace akira.Folders
+namespace Akira.Folders
 {
     public static class FolderStructures
     {

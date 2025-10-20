@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using Akira.Tools.Core;
 using UnityEditor;
 using UnityEngine;
 
@@ -50,8 +51,17 @@ namespace Editor.Files
 
             if (File.Exists(LogPath))
             {
-                var json = File.ReadAllText(LogPath);
-                _data = JsonUtility.FromJson<RenameLogData>(json) ?? new RenameLogData();
+                ErrorHandler.Try(() =>
+                {
+                    var json = File.ReadAllText(LogPath);
+                    _data = JsonUtility.FromJson<RenameLogData>(json) ?? new RenameLogData();
+                },
+                onError: (ex) =>
+                {
+                    ErrorHandler.LogWarning($"Error loading rename log, creating new: {ex.Message}");
+                    _data = new RenameLogData();
+                },
+                context: "Load RenameLog");
             }
             else
             {
@@ -61,17 +71,27 @@ namespace Editor.Files
 
         public static void Save()
         {
-            EnsureSaveFolder();
-            var json = JsonUtility.ToJson(_data, true);
-            File.WriteAllText(LogPath, json);
+            ErrorHandler.Try(() =>
+            {
+                EnsureSaveFolder();
+                var json = JsonUtility.ToJson(_data, true);
+                File.WriteAllText(LogPath, json);
+            },
+            onError: (ex) => ErrorHandler.LogError($"Failed to save rename log: {ex.Message}"),
+            context: "Save RenameLog");
         }
 
         private static void EnsureSaveFolder()
         {
-            var dir = Path.GetDirectoryName(LogPath);
+            ErrorHandler.Try(() =>
+            {
+                var dir = Path.GetDirectoryName(LogPath);
 
-            if (!Directory.Exists(dir))
-                Directory.CreateDirectory(dir);
+                if (!Directory.Exists(dir))
+                    Directory.CreateDirectory(dir);
+            },
+            onError: (ex) => ErrorHandler.LogError($"Failed to create rename log directory: {ex.Message}"),
+            context: "EnsureSaveFolder");
         }
 
         public static void AddRename(string oldName, string newName, string assetPath)

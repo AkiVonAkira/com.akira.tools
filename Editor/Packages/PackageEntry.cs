@@ -1,7 +1,7 @@
 ﻿#if UNITY_EDITOR
 using System.Collections.Generic;
 
-namespace akira.Packages
+namespace Akira.Packages
 {
     /// <summary>
     /// Data model for a package listed in the Tools Hub. Supports registry, git, and URL packages.

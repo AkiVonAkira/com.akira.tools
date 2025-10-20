@@ -1,9 +1,9 @@
 #if UNITY_EDITOR
 using System.Threading.Tasks;
-using akira.ToolsHub;
+using Akira.ToolsHub;
 using UnityEditor;
 
-namespace akira.Packages
+namespace Akira.Packages
 {
     public static class PackageInstaller
     {
