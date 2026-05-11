@@ -1,4 +1,4 @@
-﻿#if UNITY_EDITOR
+#if UNITY_EDITOR
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -48,6 +48,9 @@ namespace Akira.UI
 
         // Track preset management UI state
         private bool _showPresetManagement;
+        
+        // Scroll position for page content
+        private Vector2 _scrollPosition;
 
         public FolderCustomizationPageImpl(List<string> initialFolders, HashSet<string> nonRemovableFolders,
             string structureName)
@@ -88,12 +91,10 @@ namespace Akira.UI
             });
         }
 
-        public void DrawContentHeader()
+        public void DrawHeader()
         {
             EditorGUILayout.BeginHorizontal();
-
             GUILayout.Label("Toggle folder buttons to enable/disable them", EditorStyles.boldLabel);
-
             GUILayout.FlexibleSpace();
 
             // Add delete mode toggle
@@ -103,11 +104,58 @@ namespace Akira.UI
             if (GUILayout.Button(_deleteMode ? "Exit Delete Mode" : "Delete Mode", GUILayout.Width(120)))
                 _deleteMode = !_deleteMode;
             GUI.backgroundColor = originalColor;
-
             EditorGUILayout.EndHorizontal();
         }
 
-        public void DrawScrollContent()
+        public void DrawContent()
+        {
+            DrawFolderHierarchy();
+        }
+
+        public void DrawContentFooter()
+        {
+            // Content footer - shows folder management UI
+            UI.UIEditorUtils.DrawDividerLine();
+            GUILayout.Space(8);
+            DrawAddNewFolderSection();
+            GUILayout.Space(10);
+            DrawPresetManagementSection();
+        }
+
+        public void DrawFooter()
+        {
+            var leftButtons = new List<UI.PageLayout.FooterButton>
+            {
+                new UI.PageLayout.FooterButton
+                {
+                    Label = "Close",
+                    Style = UI.PageLayout.FooterButtonStyle.Secondary,
+                    Enabled = true,
+                    OnClick = () => ToolsHubManager.ClosePage(PageOperationResult.Cancelled),
+                    MinWidth = 100
+                }
+            };
+            
+            var rightButtons = new List<UI.PageLayout.FooterButton>
+            {
+                new UI.PageLayout.FooterButton
+                {
+                    Label = "Apply Changes",
+                    Style = UI.PageLayout.FooterButtonStyle.Primary,
+                    Enabled = true,
+                    OnClick = () =>
+                    {
+                        ApplyCustomFolders();
+                        ToolsHubManager.ClosePage(PageOperationResult.Success);
+                    },
+                    MinWidth = 120
+                }
+            };
+            
+            UI.PageLayout.DrawFooterSplit(leftButtons, rightButtons);
+        }
+
+        private void DrawFolderHierarchy()
         {
             // Reset the processed folders set at the start of drawing
             _processedFolders.Clear();
@@ -159,7 +207,7 @@ namespace Akira.UI
                 }
         }
 
-        public void DrawContentFooter()
+        private void DrawAddNewFolderSection()
         {
             UIEditorUtils.DrawDividerLine();
             
@@ -214,7 +262,10 @@ namespace Akira.UI
 
             GUI.enabled = true;
             EditorGUILayout.EndHorizontal();
+        }
 
+        private void DrawPresetManagementSection()
+        {
             // Add preset management UI as a foldout
             GUILayout.Space(15);
 
@@ -245,94 +296,70 @@ namespace Akira.UI
 
             if (_showPresetManagement)
             {
-                // Save section
-                GUILayout.BeginVertical(EditorStyles.helpBox);
-                EditorGUILayout.LabelField("Save Current Structure", EditorStyles.boldLabel);
-
-                _presetName = EditorGUILayout.TextField("Preset Name:", _presetName);
-                _presetDescription = EditorGUILayout.TextField("Description:", _presetDescription);
-
-                GUILayout.BeginHorizontal();
-                GUI.enabled = !string.IsNullOrWhiteSpace(_presetName);
-
-                if (GUILayout.Button("Save As Preset")) SaveCurrentStructureAsPreset();
-
-                if (GUILayout.Button("Export to File...")) ExportCurrentStructureToFile();
-
-                GUI.enabled = true;
-                GUILayout.EndHorizontal();
-                GUILayout.EndVertical();
-
-                // Load section
-                GUILayout.BeginVertical(EditorStyles.helpBox);
-                EditorGUILayout.LabelField("Load Structure", EditorStyles.boldLabel);
-
-                // Preset dropdown
-                var presetNames = _availablePresets.Select(p => p.Name).ToArray();
-                EditorGUI.BeginChangeCheck();
-                _selectedPresetIndex = EditorGUILayout.Popup("Select Preset:", _selectedPresetIndex, presetNames);
-
-                // Show selected preset description
-                if (_selectedPresetIndex >= 0 && _selectedPresetIndex < _availablePresets.Count)
-                    EditorGUILayout.HelpBox(_availablePresets[_selectedPresetIndex].Description, MessageType.Info);
-
-                GUILayout.BeginHorizontal();
-                GUI.enabled = _selectedPresetIndex >= 0 && _selectedPresetIndex < _availablePresets.Count;
-
-                if (GUILayout.Button("Load Preset")) LoadSelectedPreset();
-
-                if (GUILayout.Button("Export"))
-                    if (_selectedPresetIndex >= 0 && _selectedPresetIndex < _availablePresets.Count)
-                        ExportSelectedPreset();
-
-                // Only allow deleting non-built-in presets
-                GUI.enabled = _selectedPresetIndex >= 0 && _selectedPresetIndex < _availablePresets.Count &&
-                              !_availablePresets[_selectedPresetIndex].IsBuiltIn;
-
-                if (GUILayout.Button("Delete")) DeleteSelectedPreset();
-
-                GUI.enabled = true;
-                GUILayout.EndHorizontal();
-
-                GUILayout.BeginHorizontal();
-                if (GUILayout.Button("Import from JSON...")) ImportPresetFromFile();
-                GUILayout.EndHorizontal();
-
-                GUILayout.EndVertical();
+                DrawPresetSaveSection();
+                DrawPresetLoadSection();
             }
         }
 
-        public void DrawFooter()
+        private void DrawPresetSaveSection()
         {
-            var left = new List<PageLayout.FooterButton>
-            {
-                new PageLayout.FooterButton
-                {
-                    Label = "Cancel",
-                    Style = PageLayout.FooterButtonStyle.Secondary,
-                    Enabled = true,
-                    OnClick = () => ToolsHubManager.ClosePage(PageOperationResult.Cancelled),
-                    MinWidth = 100
-                }
-            };
+            // Save section
+            GUILayout.BeginVertical(EditorStyles.helpBox);
+            EditorGUILayout.LabelField("Save Current Structure", EditorStyles.boldLabel);
 
-            var right = new List<PageLayout.FooterButton>
-            {
-                new PageLayout.FooterButton
-                {
-                    Label = "Apply Changes",
-                    Style = PageLayout.FooterButtonStyle.Primary,
-                    Enabled = true,
-                    OnClick = () =>
-                    {
-                        ApplyCustomFolders();
-                        ToolsHubManager.ClosePage(PageOperationResult.Success);
-                    },
-                    MinWidth = 120
-                }
-            };
+            _presetName = EditorGUILayout.TextField("Preset Name:", _presetName);
+            _presetDescription = EditorGUILayout.TextField("Description:", _presetDescription);
 
-            PageLayout.DrawFooterSplit(left, right);
+            GUILayout.BeginHorizontal();
+            GUI.enabled = !string.IsNullOrWhiteSpace(_presetName);
+
+            if (GUILayout.Button("Save As Preset")) SaveCurrentStructureAsPreset();
+
+            if (GUILayout.Button("Export to File...")) ExportCurrentStructureToFile();
+
+            GUI.enabled = true;
+            GUILayout.EndHorizontal();
+            GUILayout.EndVertical();
+        }
+
+        private void DrawPresetLoadSection()
+        {
+            // Load section
+            GUILayout.BeginVertical(EditorStyles.helpBox);
+            EditorGUILayout.LabelField("Load Structure", EditorStyles.boldLabel);
+
+            // Preset dropdown
+            var presetNames = _availablePresets.Select(p => p.Name).ToArray();
+            EditorGUI.BeginChangeCheck();
+            _selectedPresetIndex = EditorGUILayout.Popup("Select Preset:", _selectedPresetIndex, presetNames);
+
+            // Show selected preset description
+            if (_selectedPresetIndex >= 0 && _selectedPresetIndex < _availablePresets.Count)
+                EditorGUILayout.HelpBox(_availablePresets[_selectedPresetIndex].Description, MessageType.Info);
+
+            GUILayout.BeginHorizontal();
+            GUI.enabled = _selectedPresetIndex >= 0 && _selectedPresetIndex < _availablePresets.Count;
+
+            if (GUILayout.Button("Load Preset")) LoadSelectedPreset();
+
+            if (GUILayout.Button("Export"))
+                if (_selectedPresetIndex >= 0 && _selectedPresetIndex < _availablePresets.Count)
+                    ExportSelectedPreset();
+
+            // Only allow deleting non-built-in presets
+            GUI.enabled = _selectedPresetIndex >= 0 && _selectedPresetIndex < _availablePresets.Count &&
+                          !_availablePresets[_selectedPresetIndex].IsBuiltIn;
+
+            if (GUILayout.Button("Delete")) DeleteSelectedPreset();
+
+            GUI.enabled = true;
+            GUILayout.EndHorizontal();
+
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button("Import from JSON...")) ImportPresetFromFile();
+            GUILayout.EndHorizontal();
+
+            GUILayout.EndVertical();
         }
 
         public void OnPageResult(PageOperationResult result)
@@ -1035,4 +1062,3 @@ namespace Akira.UI
     }
 }
 #endif
-

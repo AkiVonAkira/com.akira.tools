@@ -1,4 +1,4 @@
-﻿#if UNITY_EDITOR
+#if UNITY_EDITOR
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -78,47 +78,27 @@ namespace Akira.UI
         public string Title => "Manage Essential & Recommended Packages";
         public string Description => "Install and manage essential and recommended packages for your project";
 
-        // Helper: detect if there are any non-TMP packages configured
-        private bool HasNonTMPPackages()
+        public void DrawHeader()
         {
-            var packages = ToolsHubSettings.GetAllPackages();
-            if (packages == null || packages.Count == 0) return false;
-            return packages.Any(p =>
-                !string.IsNullOrEmpty(p?.Id) &&
-                !p.Id.Equals(TEXTMESHPRO_ID, StringComparison.OrdinalIgnoreCase) &&
-                !p.Id.Equals(TEXTMESHPRO_PACKAGE_ID, StringComparison.OrdinalIgnoreCase) &&
-                p.Id.IndexOf("textmeshpro", StringComparison.OrdinalIgnoreCase) < 0
-            );
-        }
-
-        // Helper: restore default packages into settings
-        private void RestoreDefaultPackages()
-        {
-            AddDefaultPackages();
-            ToolsHubSettings.Save();
-            ToolsHubManager.ShowNotification("Default package list restored.", "success");
-            RefreshPackageStatus();
-        }
-
-        public void DrawContentHeader()
-        {
-            // Search bar (full width) + Clear button inline
+            // Search bar
             EditorGUILayout.BeginHorizontal();
             EditorGUILayout.LabelField("Search:", GUILayout.Width(42));
             _search = EditorGUILayout.TextField(_search ?? string.Empty, GUILayout.ExpandWidth(true));
             if (GUILayout.Button("Clear", GUILayout.Width(60))) _search = "";
             EditorGUILayout.EndHorizontal();
 
-            // Wrapping toggles + actions row
+            // Filters and toggles
             DrawWrappingFilterControls();
 
-            // Show a hint if the list only contains TMP
+            // Show hint if only TMP exists
             if (!HasNonTMPPackages())
+            {
                 EditorGUILayout.HelpBox(
                     "Only TextMesh Pro is present. Click 'Restore Defaults' to re-add recommended packages.",
                     MessageType.Info);
+            }
 
-            // Overall progress when installing
+            // Progress indicator when installing
             if (_isInstalling)
             {
                 EditorGUILayout.Space(5);
@@ -129,7 +109,78 @@ namespace Akira.UI
             }
         }
 
-        // Render the toggle chips and actions with wrapping
+        public void DrawContent()
+        {
+            DrawPackagesList();
+        }
+
+        public void DrawContentFooter()
+        {
+            // Content footer - shows add new package form when active
+            if (_addingNewPackage)
+            {
+                UI.UIEditorUtils.DrawDividerLine();
+                GUILayout.Space(8);
+                DrawAddNewPackageForm();
+            }
+        }
+
+        public void DrawFooter()
+        {
+            var removeCount = GetRemovableCount();
+            var installCount = GetInstallableCount();
+            var isDisabled = _isInstalling || _isRefreshingStatus;
+            
+            var leftButtons = new List<UI.PageLayout.FooterButton>
+            {
+                new UI.PageLayout.FooterButton
+                {
+                    Label = "Close",
+                    Style = UI.PageLayout.FooterButtonStyle.Secondary,
+                    Enabled = true,
+                    OnClick = CleanupAndClose,
+                    MinWidth = 100
+                }
+            };
+            
+            var rightButtons = new List<UI.PageLayout.FooterButton>
+            {
+                new UI.PageLayout.FooterButton
+                {
+                    Label = "Add New",
+                    Style = UI.PageLayout.FooterButtonStyle.Primary,
+                    Enabled = !isDisabled,
+                    OnClick = () =>
+                    {
+                        _addingNewPackage = true;
+                        _newPackageId = "";
+                        _newPackageDisplayName = "";
+                        _newPackageDescription = "";
+                        _newPackageIsEssential = false;
+                    },
+                    MinWidth = 100
+                },
+                new UI.PageLayout.FooterButton
+                {
+                    Label = $"Remove ({removeCount})",
+                    Style = UI.PageLayout.FooterButtonStyle.Danger,
+                    Enabled = removeCount > 0 && !isDisabled,
+                    OnClick = StartPackageRemoval,
+                    MinWidth = 110
+                },
+                new UI.PageLayout.FooterButton
+                {
+                    Label = $"Install ({installCount})",
+                    Style = UI.PageLayout.FooterButtonStyle.Primary,
+                    Enabled = installCount > 0 && !isDisabled,
+                    OnClick = StartPackageInstallation,
+                    MinWidth = 110
+                }
+            };
+            
+            UI.PageLayout.DrawFooterSplit(leftButtons, rightButtons);
+        }
+
         private void DrawWrappingFilterControls()
         {
             float available = Mathf.Max(200f, EditorGUIUtility.currentViewWidth - 24f);
@@ -192,26 +243,33 @@ namespace Akira.UI
                 lineUsed += restoreW;
             }
 
-            // End the last line
-            EditorGUILayout.EndHorizontal();
-            GUILayout.Space(2);
+            if (lineUsed > 0) EditorGUILayout.EndHorizontal();
         }
 
-        public void DrawScrollContent()
+        private void DrawPackagesList()
+        {
+            var packages = GetFilteredPackages();
+            
+            foreach (var package in packages)
+            {
+                DrawPackageEntry(package);
+            }
+        }
+
+        private List<PackageEntry> GetFilteredPackages()
         {
             var packages = ToolsHubSettings.GetAllPackages();
 
-            // If there are no packages at all OR only TMP exists, seed defaults
+            // If there are no packages or only TMP exists, seed defaults
             var needDefaults = packages == null || packages.Count == 0 || !HasNonTMPPackages();
             if (needDefaults)
             {
                 AddDefaultPackages();
-                // Ensure persistence so they're visible immediately
                 ToolsHubSettings.Save();
                 packages = ToolsHubSettings.GetAllPackages();
             }
 
-            // Exclude Asset Store entries (handled by dedicated page)
+            // Exclude Asset Store entries
             packages = packages
                 .Where(p => p.IsAssetStore != true && string.IsNullOrEmpty(p.AssetStoreUrl))
                 .ToList();
@@ -219,93 +277,71 @@ namespace Akira.UI
             // Apply filters
             packages = FilterPackages(packages);
 
-            // Group packages by category (sort essentials first)
-            var groupedPackages = packages
+            // Group packages: essentials first, then alphabetically
+            return packages
                 .OrderByDescending(p => p.IsEssential)
                 .ThenBy(p => p.DisplayName)
                 .ToList();
-
-            // Draw packages
-            foreach (var package in groupedPackages)
-                DrawPackageEntry(package);
         }
 
-        // Page implementation
-        public void DrawContentFooter()
+        private void DrawPageFooter()
         {
-            // Empty - moved buttons to the main footer
-        }
-
-        public void DrawFooter()
-        {
-            // When adding a package, render the form only (form has its own footer buttons)
+            // If adding new package, show form instead of normal footer
             if (_addingNewPackage)
             {
                 DrawAddNewPackageForm();
                 return;
             }
 
-            // Build split footer: Cancel on the left, other actions on the right
-            var left = new List<PageLayout.FooterButton>();
-            var right = new List<PageLayout.FooterButton>();
-
-            void CancelAction()
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.Space(8);
+            
+            // Close button
+            if (GUILayout.Button("Close", GUILayout.Height(30), GUILayout.Width(100)))
             {
-                PackageManager.OnPackageInstallProgress -= HandlePackageInstallProgress;
-                PackageManager.OnPackageInstallComplete -= HandlePackageInstallComplete;
-                PackageManager.OnPackageInstallError -= HandlePackageInstallError;
-                PackageManager.OnAllPackagesInstallComplete -= HandleAllPackagesComplete;
-                ToolsHubManager.ClosePage(PageOperationResult.Cancelled);
+                CleanupAndClose();
             }
-
-            // Left: Close only
-            left.Add(new PageLayout.FooterButton
-            {
-                Label = "Close",
-                Style = PageLayout.FooterButtonStyle.Secondary,
-                Enabled = true,
-                OnClick = CancelAction,
-                MinWidth = 100
-            });
-
-            // Right: primary actions (right-aligned)
-            right.Add(new PageLayout.FooterButton
-            {
-                Label = "Add New",
-                Style = PageLayout.FooterButtonStyle.Secondary,
-                Enabled = !_isInstalling && !_isRefreshingStatus,
-                OnClick = () =>
-                {
-                    _addingNewPackage = true;
-                    _newPackageId = "";
-                    _newPackageDisplayName = "";
-                    _newPackageDescription = "";
-                    _newPackageIsEssential = false;
-                }
-            });
-
-            var removeCount = GetRemovableCount();
-            right.Add(new PageLayout.FooterButton
-            {
-                Label = $"Remove ({removeCount})",
-                Style = PageLayout.FooterButtonStyle.Danger,
-                Enabled = removeCount > 0 && !_isInstalling && !_isRefreshingStatus,
-                OnClick = StartPackageRemoval,
-                MinWidth = 110
-            });
-
-            var installCount = GetInstallableCount();
-            right.Add(new PageLayout.FooterButton
-            {
-                Label = $"Install ({installCount})",
-                Style = PageLayout.FooterButtonStyle.Primary,
-                Enabled = installCount > 0 && !_isInstalling && !_isRefreshingStatus,
-                OnClick = StartPackageInstallation,
-                MinWidth = 110
-            });
-
-            PageLayout.DrawFooterSplit(left, right);
+            
+            GUILayout.FlexibleSpace();
+            
+            // Action buttons
+            DrawFooterActionButtons();
+            
+            GUILayout.Space(8);
+            EditorGUILayout.EndHorizontal();
         }
+
+        private void CleanupAndClose()
+        {
+            PackageManager.OnPackageInstallProgress -= HandlePackageInstallProgress;
+            PackageManager.OnPackageInstallComplete -= HandlePackageInstallComplete;
+            PackageManager.OnPackageInstallError -= HandlePackageInstallError;
+            PackageManager.OnAllPackagesInstallComplete -= HandleAllPackagesComplete;
+            ToolsHubManager.ClosePage(PageOperationResult.Cancelled);
+        }
+
+        // Helper: detect if there are any non-TMP packages configured
+        private bool HasNonTMPPackages()
+        {
+            var packages = ToolsHubSettings.GetAllPackages();
+            if (packages == null || packages.Count == 0) return false;
+            return packages.Any(p =>
+                !string.IsNullOrEmpty(p?.Id) &&
+                !p.Id.Equals(TEXTMESHPRO_ID, StringComparison.OrdinalIgnoreCase) &&
+                !p.Id.Equals(TEXTMESHPRO_PACKAGE_ID, StringComparison.OrdinalIgnoreCase) &&
+                p.Id.IndexOf("textmeshpro", StringComparison.OrdinalIgnoreCase) < 0
+            );
+        }
+
+        // Helper: restore default packages into settings
+        private void RestoreDefaultPackages()
+        {
+            AddDefaultPackages();
+            ToolsHubSettings.Save();
+            ToolsHubManager.ShowNotification("Default package list restored.", "success");
+            RefreshPackageStatus();
+        }
+
 
         public void OnPageResult(PageOperationResult result)
         {

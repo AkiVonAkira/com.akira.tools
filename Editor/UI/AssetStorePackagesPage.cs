@@ -1,4 +1,4 @@
-﻿#if UNITY_EDITOR
+#if UNITY_EDITOR
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -22,8 +22,8 @@ namespace Akira.UI
         // UI state
         private string _search = "";
         private bool _addingNew;
-        private bool _hideOwned; 
-
+        private bool _hideOwned;
+        private Vector2 _scrollPosition;
         // New entry fields
         private string _url = "";
         private string _displayName = "";
@@ -101,6 +101,287 @@ namespace Akira.UI
         public string Title => "Manage Asset Store Packages";
         public string Description => "Add and track Asset Store Packages with recommended assets to get you started.";
 
+        public void DrawHeader()
+        {
+            // Search bar
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("Search:", GUILayout.Width(42));
+            _search = EditorGUILayout.TextField(_search ?? string.Empty, GUILayout.ExpandWidth(true));
+            if (GUILayout.Button("Clear", GUILayout.Width(60))) _search = "";
+            EditorGUILayout.EndHorizontal();
+
+            DrawCategoryFilters();
+            DrawSortControls();
+        }
+
+        public void DrawContent()
+        {
+            DrawAssetsList();
+            
+            DrawAssetsList();
+        }
+
+        public void DrawContentFooter()
+        {
+            // Content footer - shows add new asset form when active
+            if (_addingNew)
+            {
+                UI.UIEditorUtils.DrawDividerLine();
+                GUILayout.Space(8);
+                DrawAddNewForm();
+            }
+        }
+
+        public void DrawFooter()
+        {
+            var canBatch = GetFilteredAssets().Count > 0;
+            var countDownloadable = GetDownloadableSelectedCount();
+            var downloadLabel = countDownloadable > 0 ? $"Download Selected ({countDownloadable})" : "Download Selected";
+            
+            var rightButtons = new List<UI.PageLayout.FooterButton>();
+            
+            // Download Selected button
+            if (canBatch)
+            {
+                rightButtons.Add(new UI.PageLayout.FooterButton
+                {
+                    Label = downloadLabel,
+                    Style = UI.PageLayout.FooterButtonStyle.Primary,
+                    Enabled = countDownloadable > 0,
+                    OnClick = StartDownloadSelected,
+                    MinWidth = 180
+                });
+            }
+            
+            // Add New Asset button
+            rightButtons.Add(new UI.PageLayout.FooterButton
+            {
+                Label = _addingNew ? "Cancel Add" : "Add New Asset",
+                Style = _addingNew ? UI.PageLayout.FooterButtonStyle.Danger : UI.PageLayout.FooterButtonStyle.Primary,
+                Enabled = true,
+                OnClick = () => _addingNew = !_addingNew,
+                MinWidth = 120
+            });
+            
+            UI.PageLayout.DrawFooterSplit(null, rightButtons);
+        }
+
+
+        private void DrawAssetsList()
+        {
+            var prevOwn = PackageUIUtils.ShowOwnershipChip;
+            var prevPrice = PackageUIUtils.ShowPriceChip;
+            try
+            {
+                PackageUIUtils.ShowOwnershipChip = false;
+                PackageUIUtils.ShowPriceChip = false;
+
+                var assets = GetFilteredAssets();
+                
+                if (assets.Count == 0)
+                {
+                    EditorGUILayout.HelpBox("No Asset Store Packages configured yet. Add some using the button below!", MessageType.Info);
+                    return;
+                }
+
+                var groups = GroupAndSortAssets(assets);
+                DrawAssetGroups(groups);
+            }
+            finally
+            {
+                PackageUIUtils.ShowOwnershipChip = prevOwn;
+                PackageUIUtils.ShowPriceChip = prevPrice;
+            }
+        }
+
+        private List<PackageEntry> GetFilteredAssets()
+        {
+            var all = ToolsHubSettings.GetAllPackages() ?? new List<PackageEntry>();
+            var assets = all.Where(p => p.IsAssetStore == true || !string.IsNullOrEmpty(p.AssetStoreUrl)).ToList();
+
+            if (assets.Count == 0) return assets;
+
+            IEnumerable<PackageEntry> filtered = assets;
+            
+            if (_categoryFilter != "All") 
+                filtered = filtered.Where(e => GetTopCategory(e) == _categoryFilter);
+            if (_subcategoryFilter != "All") 
+                filtered = filtered.Where(e => GetSubCategory(e) == _subcategoryFilter);
+            if (!string.IsNullOrWhiteSpace(_search))
+            {
+                var lower = _search.Trim().ToLowerInvariant();
+                filtered = filtered.Where(e => 
+                    (e.DisplayName ?? e.Id ?? string.Empty).ToLowerInvariant().Contains(lower) ||
+                    (e.AssetAuthor ?? string.Empty).ToLowerInvariant().Contains(lower));
+            }
+            if (_hideOwned) 
+                filtered = filtered.Where(e => e.IsOwned != true);
+
+            return filtered.ToList();
+        }
+
+        private (List<PackageEntry> hasUpdate, List<PackageEntry> installed, List<PackageEntry> freeUnowned, 
+                 List<PackageEntry> paidUnowned, List<PackageEntry> unknownUnowned) GroupAndSortAssets(List<PackageEntry> list)
+        {
+            // Note: PackageEntry doesn't have HasUpdate property, so we group owned vs unowned instead
+            var hasUpdate = new List<PackageEntry>(); // Not used currently
+            var installed = list.Where(e => e.IsOwned == true).OrderBy(e => e.DisplayName ?? e.Id).ToList();
+            var freeUnowned = list.Where(e => e.IsOwned != true && e.IsFree == true).OrderBy(e => e.DisplayName ?? e.Id).ToList();
+            var paidUnowned = list.Where(e => e.IsOwned != true && e.IsFree == false).OrderBy(e => e.DisplayName ?? e.Id).ToList();
+            var unknownUnowned = list.Where(e => e.IsOwned != true && e.IsFree == null).OrderBy(e => e.DisplayName ?? e.Id).ToList();
+
+            if (_sortField == SortField.Author)
+            {
+                hasUpdate = hasUpdate.OrderBy(e => e.AssetAuthor ?? string.Empty).ThenBy(e => e.DisplayName ?? e.Id).ToList();
+                installed = installed.OrderBy(e => e.AssetAuthor ?? string.Empty).ThenBy(e => e.DisplayName ?? e.Id).ToList();
+                freeUnowned = freeUnowned.OrderBy(e => e.AssetAuthor ?? string.Empty).ThenBy(e => e.DisplayName ?? e.Id).ToList();
+                paidUnowned = paidUnowned.OrderBy(e => e.AssetAuthor ?? string.Empty).ThenBy(e => e.DisplayName ?? e.Id).ToList();
+                unknownUnowned = unknownUnowned.OrderBy(e => e.AssetAuthor ?? string.Empty).ThenBy(e => e.DisplayName ?? e.Id).ToList();
+            }
+            
+            if (!_sortAscending)
+            {
+                hasUpdate.Reverse();
+                installed.Reverse();
+                freeUnowned.Reverse();
+                paidUnowned.Reverse();
+                unknownUnowned.Reverse();
+            }
+
+            return (hasUpdate, installed, freeUnowned, paidUnowned, unknownUnowned);
+        }
+
+        private void DrawAssetGroups((List<PackageEntry> hasUpdate, List<PackageEntry> installed, List<PackageEntry> freeUnowned, 
+                                      List<PackageEntry> paidUnowned, List<PackageEntry> unknownUnowned) groups)
+        {
+            var currentVisible = new HashSet<string>(StringComparer.Ordinal);
+
+            DrawAssetGroup(ref _foldUpdate, "Available Updates", groups.hasUpdate, currentVisible, "akira.assetStore.foldUpdate");
+            DrawAssetGroup(ref _foldInstalled, "Owned Assets", groups.installed, currentVisible, "akira.assetStore.foldInstalled");
+            DrawAssetGroup(ref _foldFreeUnowned, "Free (Not Owned)", groups.freeUnowned, currentVisible, "akira.assetStore.foldFree", 
+                () => { foreach (var e in groups.freeUnowned) e.IsEnabled = true; ToolsHubSettings.Save(); },
+                () => { foreach (var e in groups.freeUnowned) e.IsEnabled = false; ToolsHubSettings.Save(); });
+            DrawAssetGroup(ref _foldPaidUnowned, "Paid (Not Owned)", groups.paidUnowned, currentVisible, "akira.assetStore.foldPaid",
+                () => { foreach (var e in groups.paidUnowned) e.IsEnabled = true; ToolsHubSettings.Save(); },
+                () => { foreach (var e in groups.paidUnowned) e.IsEnabled = false; ToolsHubSettings.Save(); });
+            DrawAssetGroup(ref _foldUnknown, "Unknown/Pending", groups.unknownUnowned, currentVisible, "akira.assetStore.foldUnknown",
+                () => { foreach (var e in groups.unknownUnowned) e.IsEnabled = true; ToolsHubSettings.Save(); },
+                () => { foreach (var e in groups.unknownUnowned) e.IsEnabled = false; ToolsHubSettings.Save(); });
+
+            _lastVisibleKeys = currentVisible;
+
+            if (!_initialCollapseApplied)
+            {
+                _collapsedKeys.UnionWith(_lastVisibleKeys);
+                _initialCollapseApplied = true;
+            }
+        }
+
+        private void DrawAssetGroup(ref bool foldout, string label, List<PackageEntry> entries, HashSet<string> visibleKeys, 
+                                    string prefKey, Action enableAll = null, Action disableAll = null)
+        {
+            if (entries.Count == 0) return;
+
+            DrawGroupHeader(ref foldout, $"{label} ({entries.Count})", prefKey, enableAll, disableAll);
+            if (foldout)
+            {
+                foreach (var e in entries)
+                {
+                    DrawAssetCard(e);
+                    visibleKeys.Add(e.Id);
+                }
+            }
+            GUILayout.Space(4);
+        }
+
+        private void DrawGroupHeader(ref bool foldout, string label, string prefKey, Action enableAll, Action disableAll)
+        {
+            EditorGUILayout.BeginHorizontal(EditorStyles.helpBox);
+            var newFold = EditorGUILayout.Foldout(foldout, label, true);
+            if (newFold != foldout)
+            {
+                foldout = newFold;
+                if (!string.IsNullOrEmpty(prefKey)) EditorPrefs.SetBool(prefKey, foldout);
+            }
+            GUILayout.FlexibleSpace();
+            using (new EditorGUI.DisabledScope(!foldout))
+            {
+                if (GUILayout.Button("Enable All", GUILayout.Width(90))) enableAll?.Invoke();
+                if (GUILayout.Button("Disable All", GUILayout.Width(90))) disableAll?.Invoke();
+            }
+            EditorGUILayout.EndHorizontal();
+        }
+
+        private void DrawAddNewForm()
+        {
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+            EditorGUILayout.LabelField("Add Asset Store Package", EditorStyles.boldLabel);
+
+            _url = EditorGUILayout.TextField("Asset URL:", _url);
+            _displayName = EditorGUILayout.TextField("Display Name: (Optional)", _displayName);
+            _description = EditorGUILayout.TextField("Description: (Optional)", _description);
+
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.FlexibleSpace();
+            
+            if (GUILayout.Button("Cancel", GUILayout.Width(100)))
+            {
+                _addingNew = false;
+                GUI.FocusControl(null);
+            }
+
+            var canAdd = ValidateAssetUrl(_url);
+            GUI.enabled = canAdd;
+            if (GUILayout.Button("Add", GUILayout.Width(120)))
+            {
+                AddNewAssetPackage();
+            }
+            GUI.enabled = true;
+            
+            EditorGUILayout.EndHorizontal();
+            EditorGUILayout.EndVertical();
+        }
+
+        private bool ValidateAssetUrl(string url)
+        {
+            if (string.IsNullOrWhiteSpace(url)) return false;
+            
+            try
+            {
+                var u = new Uri(url.Trim());
+                return (u.Scheme == Uri.UriSchemeHttp || u.Scheme == Uri.UriSchemeHttps) &&
+                       !string.IsNullOrWhiteSpace(u.Host) &&
+                       u.AbsolutePath.Contains("/packages/");
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private void AddNewAssetPackage()
+        {
+            var id = BuildAssetId(_url, _displayName);
+            var entry = new PackageEntry
+            {
+                Id = id,
+                DisplayName = _displayName.Trim(),
+                Description = _description.Trim(),
+                IsEssential = false,
+                IsEnabled = true,
+                IsAssetStore = true,
+                IsFree = null,
+                AssetStoreUrl = _url.Trim(),
+                Price = null,
+                LastAssetFetchUnixSeconds = 0
+            };
+            ToolsHubSettings.AddOrUpdatePackage(entry);
+            ToolsHubSettings.Save();
+            AssetStoreInfoService.QueueFetch(entry);
+            _addingNew = false;
+            ToolsHubManager.ShowNotification("Asset added. Fetching details…", "success");
+        }
+
         private void RefreshStaleEntries()
         {
             var all = ToolsHubSettings.GetAllPackages() ?? new List<PackageEntry>();
@@ -159,21 +440,6 @@ namespace Akira.UI
             }
         }
 
-        public void DrawContentHeader()
-        {
-            EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.LabelField("Search:", GUILayout.Width(42));
-            _search = EditorGUILayout.TextField(_search ?? string.Empty, GUILayout.ExpandWidth(true));
-            if (GUILayout.Button("Clear", GUILayout.Width(60))) _search = "";
-            EditorGUILayout.EndHorizontal();
-
-            // Category/subcategory dropdowns + filters
-            DrawCategoryFilters();
-
-            // Sorting row
-            DrawSortControls();
-        }
-
         private void DrawSortControls()
         {
             EditorGUILayout.BeginHorizontal();
@@ -221,43 +487,44 @@ namespace Akira.UI
             EditorGUILayout.EndHorizontal();
         }
 
+        // Category helper methods
+        private static string GetTopCategory(PackageEntry e)
+        {
+            if (!string.IsNullOrEmpty(e.AssetCategory)) return e.AssetCategory.Split('/')[0];
+            var url = e.AssetStoreUrl ?? string.Empty;
+            try
+            {
+                var uri = new Uri(url);
+                var segs = uri.AbsolutePath.Trim('/').Split('/');
+                var idx = Array.FindIndex(segs, s => string.Equals(s, "packages", StringComparison.OrdinalIgnoreCase));
+                if (idx >= 0 && idx + 1 < segs.Length)
+                {
+                    var cat = segs[idx + 1].Replace('-', ' ');
+                    return System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(cat);
+                }
+            }
+            catch { }
+            return "Uncategorized";
+        }
+
+        private static string GetSubCategory(PackageEntry e)
+        {
+            if (!string.IsNullOrEmpty(e.AssetCategory))
+            {
+                var parts = e.AssetCategory.Split('/');
+                if (parts.Length > 1) return parts[1];
+            }
+            return "(None)";
+        }
+
         private void DrawCategoryFilters()
         {
             var all = ToolsHubSettings.GetAllPackages() ?? new List<PackageEntry>();
             var assets = all.Where(p => p.IsAssetStore == true || !string.IsNullOrEmpty(p.AssetStoreUrl)).ToList();
 
             // Build categories from AssetCategory; fallback to URL parsing (top-level after /packages/)
-            static string TopCategory(PackageEntry e)
-            {
-                if (!string.IsNullOrEmpty(e.AssetCategory)) return e.AssetCategory.Split('/')[0];
-                var url = e.AssetStoreUrl ?? string.Empty;
-                try
-                {
-                    var uri = new Uri(url);
-                    var segs = uri.AbsolutePath.Trim('/').Split('/');
-                    var idx = Array.FindIndex(segs, s => string.Equals(s, "packages", StringComparison.OrdinalIgnoreCase));
-                    if (idx >= 0 && idx + 1 < segs.Length)
-                    {
-                        var cat = segs[idx + 1].Replace('-', ' ');
-                        return System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(cat);
-                    }
-                }
-                catch { }
-                return "Uncategorized";
-            }
-
-            static string SubCategory(PackageEntry e)
-            {
-                if (!string.IsNullOrEmpty(e.AssetCategory))
-                {
-                    var parts = e.AssetCategory.Split('/');
-                    if (parts.Length > 1) return parts[1];
-                }
-                return "(None)";
-            }
-
             var categories = new List<string> { "All" };
-            categories.AddRange(assets.Select(TopCategory).Distinct().OrderBy(s => s));
+            categories.AddRange(assets.Select(GetTopCategory).Distinct().OrderBy(s => s));
 
             EditorGUILayout.BeginHorizontal();
 
@@ -276,9 +543,9 @@ namespace Akira.UI
 
             // Subcategories based on selected category
             IEnumerable<PackageEntry> baseSet = assets;
-            if (_categoryFilter != "All") baseSet = baseSet.Where(e => TopCategory(e) == _categoryFilter);
+            if (_categoryFilter != "All") baseSet = baseSet.Where(e => GetTopCategory(e) == _categoryFilter);
             var subcats = new List<string> { "All" };
-            subcats.AddRange(baseSet.Select(SubCategory).Distinct().OrderBy(s => s));
+            subcats.AddRange(baseSet.Select(GetSubCategory).Distinct().OrderBy(s => s));
 
             // Only show Sub dropdown if there are actual choices beyond 'All'
             if (subcats.Count > 1)
@@ -309,370 +576,6 @@ namespace Akira.UI
                 EditorPrefs.SetBool("akira.assetStore.hideOwned", _hideOwned);
             }
             EditorGUILayout.EndHorizontal();
-        }
-
-        public void DrawScrollContent()
-        {
-            // Temporarily hide ownership/price chips for this page
-            var prevOwn = PackageUIUtils.ShowOwnershipChip;
-            var prevPrice = PackageUIUtils.ShowPriceChip;
-            try
-            {
-                PackageUIUtils.ShowOwnershipChip = false;
-                PackageUIUtils.ShowPriceChip = false;
-
-                var all = ToolsHubSettings.GetAllPackages() ?? new List<PackageEntry>();
-                var list = all
-                    .Where(p => p.IsAssetStore == true || !string.IsNullOrEmpty(p.AssetStoreUrl))
-                    .ToList();
-
-                // Apply text search first
-                if (!string.IsNullOrWhiteSpace(_search))
-                {
-                    list = list.Where(p =>
-                        (p.DisplayName ?? string.Empty).IndexOf(_search, StringComparison.OrdinalIgnoreCase) >= 0 ||
-                        (p.Description ?? string.Empty).IndexOf(_search, StringComparison.OrdinalIgnoreCase) >= 0 ||
-                        (p.AssetStoreUrl ?? string.Empty).IndexOf(_search, StringComparison.OrdinalIgnoreCase) >= 0
-                    ).ToList();
-                }
-
-                // Apply category filters
-                static string TopCategory(PackageEntry e)
-                {
-                    if (!string.IsNullOrEmpty(e.AssetCategory)) return e.AssetCategory.Split('/')[0];
-                    return "Uncategorized";
-                }
-                static string SubCategory(PackageEntry e)
-                {
-                    if (!string.IsNullOrEmpty(e.AssetCategory))
-                    {
-                        var parts = e.AssetCategory.Split('/');
-                        if (parts.Length > 1) return parts[1];
-                    }
-                    return "(None)";
-                }
-
-                if (_categoryFilter != "All")
-                    list = list.Where(e => TopCategory(e) == _categoryFilter).ToList();
-                if (_subcategoryFilter != "All")
-                {
-                    if (_subcategoryFilter == "(None)")
-                        list = list.Where(e => SubCategory(e) == "(None)").ToList();
-                    else
-                        list = list.Where(e => SubCategory(e) == _subcategoryFilter).ToList();
-                }
-
-                // Hide entries marked as Owned when toggle is active
-                if (_hideOwned)
-                    list = list.Where(e => e.IsOwned != true).ToList();
-
-                // Track visible keys for bulk collapse/expand (for next frame buttons)
-                _lastVisibleKeys = new HashSet<string>(list.Select(e => e.AssetStoreId ?? e.Id ?? e.AssetStoreUrl ?? string.Empty)
-                    .Where(k => !string.IsNullOrEmpty(k)), StringComparer.Ordinal);
-
-                // Apply initial collapse once per page usage
-                if (!_initialCollapseApplied && _lastVisibleKeys.Count > 0)
-                {
-                    _collapsedKeys.UnionWith(_lastVisibleKeys);
-                    _initialCollapseApplied = true;
-                    EditorPrefs.SetBool("akira.assetStore.initialCollapseApplied", true);
-                }
-
-                if (list.Count == 0)
-                {
-                    EditorGUILayout.HelpBox("No Asset Store packages found. Use 'Add New' to create entries.", MessageType.Info);
-                    return;
-                }
-
-                // Ensure details fetch if missing and prefetch overview (for versions)
-                foreach (var entry in list)
-                {
-                    if (string.IsNullOrEmpty(entry.Price) && !entry.IsFree.HasValue && !string.IsNullOrEmpty(entry.AssetStoreUrl))
-                        AssetStoreInfoService.QueueFetch(entry);
-                    if (!string.IsNullOrEmpty(entry.AssetStoreId) && long.TryParse(entry.AssetStoreId, out var pid))
-                        TryRequestOverview(pid);
-                }
-
-                // ---- Version-aware grouping helpers ----
-                bool HasAnyTrackedVersion(string k)
-                {
-                    return !string.IsNullOrEmpty(GetInstalledVersion(k)) || !string.IsNullOrEmpty(GetDownloadedVersion(k));
-                }
-
-                bool IsImportedPid(PackageEntry e)
-                {
-                    if (string.IsNullOrEmpty(e.AssetStoreId) || !long.TryParse(e.AssetStoreId, out var pid)) return false;
-                    return ErrorHandler.Try(() => AssetStoreBridge.IsImported(pid), defaultValue: false, context: $"IsImportedPid: {e.Name}");
-                }
-
-                bool IsUpdate(PackageEntry e)
-                {
-                    var k = e.AssetStoreId ?? e.Id ?? e.AssetStoreUrl ?? string.Empty;
-                    if (string.IsNullOrEmpty(e.AssetStoreId) || !long.TryParse(e.AssetStoreId, out var pid)) return false;
-                    if (!_overviewByPid.TryGetValue(pid, out var ov) || string.IsNullOrWhiteSpace(ov?.Version)) return false;
-                    var avail = ov.Version;
-                    var baseVer = MaxVersion(GetInstalledVersion(k), GetDownloadedVersion(k));
-                    if (string.IsNullOrWhiteSpace(baseVer)) return false; // no prior install/download => not an update
-                    return CompareVersions(avail, baseVer) > 0;
-                }
-
-                bool IsInstalled(PackageEntry e)
-                {
-                    // Prefer authoritative import status from Unity's AssetStoreCache
-                    if (IsImportedPid(e)) return true;
-                    var k = e.AssetStoreId ?? e.Id ?? e.AssetStoreUrl ?? string.Empty;
-                    return HasAnyTrackedVersion(k);
-                }
-
-                // Build groups with priority buckets
-                var updateAvail = list.Where(IsUpdate).ToList();
-                var installed = list.Where(IsInstalled).ToList();
-                // Remove overlaps: update items shouldn't appear in installed; also exclude both from remaining buckets
-                var excludeKeys = new HashSet<string>(updateAvail.Select(e => e.AssetStoreId ?? e.Id ?? e.AssetStoreUrl ?? string.Empty)
-                    .Concat(installed.Select(e => e.AssetStoreId ?? e.Id ?? e.AssetStoreUrl ?? string.Empty)), StringComparer.Ordinal);
-
-                // Grouping
-                bool IsOwned(PackageEntry e) => e.IsOwned == true;
-                bool IsFreeUnowned(PackageEntry e) => (e.IsOwned != true) && (e.IsFree == true);
-                bool IsPaidUnowned(PackageEntry e) => (e.IsOwned != true) && (e.IsFree == false);
-                bool IsUnknown(PackageEntry e) => (e.IsOwned != true) && (!e.IsFree.HasValue);
-
-                var owned = list.Where(e => !excludeKeys.Contains(e.AssetStoreId ?? e.Id ?? e.AssetStoreUrl ?? string.Empty)).Where(IsOwned).ToList();
-                var freeUnowned = list.Where(e => !excludeKeys.Contains(e.AssetStoreId ?? e.Id ?? e.AssetStoreUrl ?? string.Empty)).Where(IsFreeUnowned).ToList();
-                var paidUnowned = list.Where(e => !excludeKeys.Contains(e.AssetStoreId ?? e.Id ?? e.AssetStoreUrl ?? string.Empty)).Where(IsPaidUnowned).ToList();
-                var unknown = list.Where(e => !excludeKeys.Contains(e.AssetStoreId ?? e.Id ?? e.AssetStoreUrl ?? string.Empty)).Where(IsUnknown).ToList();
-
-                // Sorting helper
-                string SortName(PackageEntry e)
-                {
-                    var name = e.DisplayName;
-                    if (string.IsNullOrWhiteSpace(name)) name = e.AssetTitle;
-                    if (string.IsNullOrWhiteSpace(name))
-                    {
-                        // derive from URL slug
-                        try
-                        {
-                            var u = new Uri(e.AssetStoreUrl ?? string.Empty);
-                            var seg = u.Segments?.LastOrDefault()?.Trim('/') ?? string.Empty;
-                            name = string.IsNullOrEmpty(seg) ? (e.Id ?? string.Empty) : seg.Replace('-', ' ');
-                        }
-                        catch { name = e.Id ?? string.Empty; }
-                    }
-                    return name ?? string.Empty;
-                }
-                string SortAuthor(PackageEntry e) => e.AssetAuthor ?? string.Empty;
-
-                IEnumerable<PackageEntry> ApplySort(IEnumerable<PackageEntry> src)
-                {
-                    IOrderedEnumerable<PackageEntry> ordered = _sortField switch
-                    {
-                        SortField.Author => src.OrderBy(SortAuthor, StringComparer.OrdinalIgnoreCase),
-                        _ => src.OrderBy(SortName, StringComparer.OrdinalIgnoreCase)
-                    };
-                    if (_sortAscending) return ordered;
-                    return ordered.Reverse();
-                }
-
-                updateAvail = ApplySort(updateAvail).ToList();
-                installed = ApplySort(installed).ToList();
-                owned = ApplySort(owned).ToList();
-                freeUnowned = ApplySort(freeUnowned).ToList();
-                paidUnowned = ApplySort(paidUnowned).ToList();
-                unknown = ApplySort(unknown).ToList();
-
-                // Draw groups with desired priority:
-                // 1) Update Available (highest)
-                if (updateAvail.Count > 0)
-                {
-                    DrawGroupHeader(ref _foldUpdate, $"Update Available ({updateAvail.Count})", "akira.assetStore.fold.update",
-                        () => { /* Enable All not applicable here; no-op */ }, () => { /* Disable All no-op */ });
-                    if (_foldUpdate) foreach (var e in updateAvail) DrawAssetCard(e);
-                }
-
-                // 2) Owned / Unowned buckets (not installed)
-                if (owned.Count > 0)
-                {
-                    DrawGroupHeader(ref _foldOwned, $"Owned (Not Installed) ({owned.Count})", "akira.assetStore.fold.owned", () => ToggleGroupEnable(owned, true), () => ToggleGroupEnable(owned, false));
-                    if (_foldOwned) foreach (var e in owned) DrawAssetCard(e);
-                }
-
-                if (freeUnowned.Count > 0)
-                {
-                    DrawGroupHeader(ref _foldFreeUnowned, $"Free (Unowned) ({freeUnowned.Count})", "akira.assetStore.fold.free", () => ToggleGroupEnable(freeUnowned, true), () => ToggleGroupEnable(freeUnowned, false));
-                    if (_foldFreeUnowned) foreach (var e in freeUnowned) DrawAssetCard(e);
-                }
-
-                if (paidUnowned.Count > 0)
-                {
-                    DrawGroupHeader(ref _foldPaidUnowned, $"Paid (Unowned) ({paidUnowned.Count})", "akira.assetStore.fold.paid", () => ToggleGroupEnable(paidUnowned, true), () => ToggleGroupEnable(paidUnowned, false));
-                    if (_foldPaidUnowned) foreach (var e in paidUnowned) DrawAssetCard(e);
-                }
-
-                if (unknown.Count > 0)
-                {
-                    DrawGroupHeader(ref _foldUnknown, $"Unknown ({unknown.Count})", "akira.assetStore.fold.unknown", () => ToggleGroupEnable(unknown, true), () => ToggleGroupEnable(unknown, false));
-                    if (_foldUnknown) foreach (var e in unknown) DrawAssetCard(e);
-                }
-
-                // 3) Installed (lowest priority among groups requested)
-                if (installed.Count > 0)
-                {
-                    DrawGroupHeader(ref _foldInstalled, $"Installed ({installed.Count})", "akira.assetStore.fold.installed",
-                        () => ToggleGroupEnable(installed, true), () => ToggleGroupEnable(installed, false));
-                    if (_foldInstalled) foreach (var e in installed) DrawAssetCard(e);
-                }
-            }
-            finally
-            {
-                PackageUIUtils.ShowOwnershipChip = prevOwn;
-                PackageUIUtils.ShowPriceChip = prevPrice;
-            }
-        }
-
-        private void ToggleGroupEnable(List<PackageEntry> items, bool enable)
-        {
-            if (items == null || items.Count == 0) return;
-            foreach (var e in items)
-            {
-                if (e.IsEnabled != enable)
-                {
-                    e.IsEnabled = enable;
-                    ToolsHubSettings.AddOrUpdatePackage(e);
-                }
-            }
-            ToolsHubSettings.Save();
-            EditorApplication.delayCall += () =>
-            {
-                if (EditorWindow.HasOpenInstances<ToolsHubManager>())
-                    EditorWindow.GetWindow<ToolsHubManager>().Repaint();
-            };
-        }
-
-        private void DrawGroupHeader(ref bool foldout, string label, string prefKey, Action enableAll, Action disableAll)
-        {
-            EditorGUILayout.BeginHorizontal(EditorStyles.helpBox);
-            var newFold = EditorGUILayout.Foldout(foldout, label, true);
-            if (newFold != foldout)
-            {
-                foldout = newFold;
-                if (!string.IsNullOrEmpty(prefKey)) EditorPrefs.SetBool(prefKey, foldout);
-            }
-            GUILayout.FlexibleSpace();
-            using (new EditorGUI.DisabledScope(!foldout))
-            {
-                if (GUILayout.Button("Enable All", GUILayout.Width(90))) enableAll?.Invoke();
-                if (GUILayout.Button("Disable All", GUILayout.Width(90))) disableAll?.Invoke();
-            }
-            EditorGUILayout.EndHorizontal();
-        }
-
-        public void DrawContentFooter()
-        {
-            // When adding new, show a form in footer area
-            if (_addingNew)
-            {
-                EditorGUILayout.BeginVertical(EditorStyles.helpBox);
-                EditorGUILayout.LabelField("Add Asset Store Package", EditorStyles.boldLabel);
-
-                _url = EditorGUILayout.TextField("Asset URL:", _url);
-                _displayName = EditorGUILayout.TextField("Display Name: (Optional)", _displayName);
-                _description = EditorGUILayout.TextField("Description: (Optional)", _description);
-
-                EditorGUILayout.BeginHorizontal();
-                GUILayout.FlexibleSpace();
-                if (GUILayout.Button("Cancel", GUILayout.Width(100)))
-                {
-                    _addingNew = false;
-                    GUI.FocusControl(null);
-                }
-
-                var canAdd = !string.IsNullOrWhiteSpace(_url);
-                // Stronger asset url validation:
-                if (canAdd)
-                {
-                    try
-                    {
-                        var u = new Uri(_url.Trim());
-                        if (!(u.Scheme == Uri.UriSchemeHttp || u.Scheme == Uri.UriSchemeHttps) ||
-                            string.IsNullOrWhiteSpace(u.Host) ||
-                            !u.AbsolutePath.Contains("/packages/"))
-                        {
-                            canAdd = false;
-                        }
-                    }
-                    catch
-                    {
-                        canAdd = false;
-                    }
-                }
-                GUI.enabled = canAdd;
-                if (GUILayout.Button("Add", GUILayout.Width(120)))
-                {
-                    var id = BuildAssetId(_url, _displayName);
-                    var entry = new PackageEntry
-                    {
-                        Id = id,
-                        DisplayName = _displayName.Trim(),
-                        Description = _description.Trim(),
-                        IsEssential = false,
-                        IsEnabled = true,
-                        IsAssetStore = true,
-                        IsFree = null, // unknown until fetched
-                        AssetStoreUrl = _url.Trim(),
-                        Price = null,
-                        LastAssetFetchUnixSeconds = 0
-                    };
-                    ToolsHubSettings.AddOrUpdatePackage(entry);
-                    ToolsHubSettings.Save();
-                    // Queue a background fetch for price/free
-                    AssetStoreInfoService.QueueFetch(entry);
-                    _addingNew = false;
-                    ToolsHubManager.ShowNotification("Asset added. Fetching details…", "success");
-                }
-                GUI.enabled = true;
-                EditorGUILayout.EndHorizontal();
-                EditorGUILayout.EndVertical();
-            }
-        }
-
-        public void DrawFooter()
-        {
-            var left = new List<PageLayout.FooterButton>
-            {
-                new PageLayout.FooterButton
-                {
-                    Label = "Close",
-                    Style = PageLayout.FooterButtonStyle.Secondary,
-                    Enabled = true,
-                    OnClick = () => ToolsHubManager.ClosePage(PageOperationResult.Cancelled),
-                    MinWidth = 100
-                }
-            };
-
-            var right = new List<PageLayout.FooterButton>
-            {
-                new PageLayout.FooterButton
-                {
-                    Label = _addingNew ? "Adding..." : "Add New",
-                    Style = PageLayout.FooterButtonStyle.Primary,
-                    Enabled = !_addingNew,
-                    OnClick = () => { _addingNew = true; _url = _displayName = _description = string.Empty; }
-                }
-            };
-
-            // New: batch download button (owned + enabled)
-            var canBatch = AssetStoreService.IsAvailable && AssetStoreService.IsSignedIn;
-            var countDownloadable = GetDownloadableSelectedCount();
-            right.Add(new PageLayout.FooterButton
-            {
-                Label = countDownloadable > 0 ? $"Download Selected ({countDownloadable})" : "Download Selected",
-                Style = PageLayout.FooterButtonStyle.Primary,
-                Enabled = canBatch && countDownloadable > 0,
-                OnClick = StartDownloadSelected,
-                MinWidth = 160
-            });
-
-            PageLayout.DrawFooterSplit(left, right);
         }
 
         public void OnPageResult(PageOperationResult result) { }

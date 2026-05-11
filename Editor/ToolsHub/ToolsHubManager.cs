@@ -40,6 +40,12 @@ namespace Akira.ToolsHub
     public class ToolsHubManager : EditorWindow
     {
         private static ToolsHubManager _instance;
+        
+        // MVVM Components
+        private ToolsHubManagerViewModel _viewModel;
+        private ToolsHubUIRenderer _uiRenderer;
+        
+        // Legacy fields (kept for compatibility during transition)
         private static List<MethodInfo> _cachedMethods = new();
         private static Texture2D _normalBg;
         private static Texture2D _hoverBg;
@@ -68,6 +74,18 @@ namespace Akira.ToolsHub
             _instance = this;
             minSize = new Vector2(MinWidth, MinHeight);
 
+            // Initialize MVVM components
+            _viewModel = new ToolsHubManagerViewModel();
+            _uiRenderer = new ToolsHubUIRenderer(_viewModel);
+            
+            // Subscribe to events
+            _viewModel.OnStateChanged += Repaint;
+            _viewModel.OnMenuRefreshed += Repaint;
+            
+            // Initialize menu
+            _viewModel.Initialize();
+
+            // Legacy initialization (kept for compatibility)
             WarmupMenuCache();
             RefreshMenuTree();
             EditorApplication.delayCall += RefreshOpenWindowMenu;
@@ -92,12 +110,28 @@ namespace Akira.ToolsHub
 
         private void OnDisable()
         {
+            // Unsubscribe from events
+            if (_viewModel != null)
+            {
+                _viewModel.OnStateChanged -= Repaint;
+                _viewModel.OnMenuRefreshed -= Repaint;
+            }
+            
+            // Legacy cleanup
             _cachedMethods = null;
             ClearPageStack();
         }
 
         private void DrawIMGUI()
         {
+            // Use new MVVM UI if available, otherwise fall back to legacy
+            if (_uiRenderer != null && _viewModel != null)
+            {
+                _uiRenderer.DrawUI();
+                return;
+            }
+            
+            // Legacy rendering (fallback)
             try { InitializeStyles(); } catch (Exception ex) { Debug.LogWarning($"ToolsHub styles init skipped: {ex.Message}"); }
 
             DrawToolbar();
@@ -218,18 +252,33 @@ namespace Akira.ToolsHub
 
         public static void SetPageRefreshHandler(Action handler)
         {
-            _pageRefreshHandler = handler;
+            if (_instance?._viewModel != null)
+                _instance._viewModel.SetPageRefreshHandler(handler);
+            else
+                _pageRefreshHandler = handler;
         }
 
         public static void ClearPageRefreshHandler()
         {
-            _pageRefreshHandler = null;
+            if (_instance?._viewModel != null)
+                _instance._viewModel.ClearPageRefreshHandler();
+            else
+                _pageRefreshHandler = null;
         }
 
         public static void ShowPage(string title, Action drawMethod, Action<PageOperationResult> onResult = null)
         {
             if (_instance == null)
                 _instance = GetWindow<ToolsHubManager>("Akira Tools Hub");
+            
+            // Use ViewModel if available
+            if (_instance._viewModel != null)
+            {
+                _instance._viewModel.ShowPage(title, drawMethod, onResult);
+                return;
+            }
+            
+            // Legacy implementation
             PageLayout.ResetState(title);
 
             if (_instance._currentPageIndex < _instance._pageStack.Count - 1)
@@ -243,7 +292,17 @@ namespace Akira.ToolsHub
 
         public static void ClosePage(PageOperationResult result)
         {
-            if (_instance == null || _instance._currentPageIndex < 0 || _instance._pageStack.Count == 0)
+            if (_instance == null) return;
+            
+            // Use ViewModel if available
+            if (_instance._viewModel != null)
+            {
+                _instance._viewModel.ClosePage(result);
+                return;
+            }
+            
+            // Legacy implementation
+            if (_instance._currentPageIndex < 0 || _instance._pageStack.Count == 0)
                 return;
             var page = _instance._pageStack[_instance._currentPageIndex];
             page.OnResult?.Invoke(result);
@@ -255,7 +314,17 @@ namespace Akira.ToolsHub
 
         public static void ClosePages(int count, PageOperationResult result)
         {
-            if (_instance == null || _instance._pageStack.Count == 0) return;
+            if (_instance == null) return;
+            
+            // Use ViewModel if available
+            if (_instance._viewModel != null)
+            {
+                _instance._viewModel.ClosePages(count, result);
+                return;
+            }
+            
+            // Legacy implementation
+            if (_instance._pageStack.Count == 0) return;
 
             for (var i = 0; i < count && _instance._pageStack.Count > 0; i++)
                 if (_instance._currentPageIndex >= 0 && _instance._currentPageIndex < _instance._pageStack.Count)
@@ -280,6 +349,15 @@ namespace Akira.ToolsHub
             if (_instance == null)
                 _instance = GetWindow<ToolsHubManager>("Akira Tools Hub");
 
+            // Use ViewModel if available
+            if (_instance._viewModel != null)
+            {
+                _instance._viewModel.ShowNotification(message, type);
+                _instance.Repaint();
+                return;
+            }
+            
+            // Legacy implementation
             switch (type.ToLower())
             {
                 case "success":
@@ -310,7 +388,14 @@ namespace Akira.ToolsHub
         // Warmup cached method list so first-time opening doesn't require a manual refresh
         public static void WarmupMenuCache()
         {
-            try { _ = GetMenuButtonMethods(); } catch { /* ignore */ }
+            if (_instance?._viewModel != null)
+            {
+                _instance._viewModel.WarmupMenuCache();
+            }
+            else
+            {
+                try { _ = GetMenuButtonMethods(); } catch { /* ignore */ }
+            }
         }
 
         // External-safe way to refresh menu of an open window (no instance => no-op)
@@ -318,7 +403,14 @@ namespace Akira.ToolsHub
         {
             if (_instance != null)
             {
-                _instance.RefreshMenuTree();
+                if (_instance._viewModel != null)
+                {
+                    _instance._viewModel.RefreshMenuTree();
+                }
+                else
+                {
+                    _instance.RefreshMenuTree();
+                }
                 _instance.Repaint();
             }
         }

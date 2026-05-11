@@ -1,4 +1,4 @@
-﻿#if UNITY_EDITOR
+#if UNITY_EDITOR
 using System;
 using System.IO;
 using Akira.ToolsHub;
@@ -44,6 +44,9 @@ namespace Akira.UI
         // Content
         private string _templateContent;
         private string _templatePath;
+        
+        // Scroll position for page content
+        private Vector2 _scrollPosition;
 
         public ScriptImportPageImpl(string templateName, string outputName, string displayName, string menuPath)
         {
@@ -92,11 +95,69 @@ namespace Akira.UI
         public string Title => $"Import {_displayName} Script";
         public string Description => "Import script template to your project";
 
-        public void DrawContentHeader()
+        public void DrawHeader()
         {
             GUILayout.Space(5);
+            DrawClassNameField();
+            GUILayout.Space(5);
+            DrawNamespaceField();
+            GUILayout.Space(5);
+            DrawAsmdefLocationField();
+            DrawOutputPathField();
+        }
 
-            // Class Name Field
+        public void DrawContent()
+        {
+            DrawScriptPreview();
+        }
+
+        public void DrawContentFooter()
+        {
+            // Content footer - shows validation warnings
+            DrawValidationWarnings();
+        }
+
+        public void DrawFooter()
+        {
+            var isValidExtension = _outputPath.ToLower().EndsWith(".cs") || _outputPath.ToLower().EndsWith(".asmdef");
+            var isValid = !string.IsNullOrEmpty(_className) &&
+                          !string.IsNullOrEmpty(_outputPath) &&
+                          isValidExtension &&
+                          !_className.Contains(" ");
+            
+            var leftButtons = new List<UI.PageLayout.FooterButton>
+            {
+                new UI.PageLayout.FooterButton
+                {
+                    Label = "Close",
+                    Style = UI.PageLayout.FooterButtonStyle.Secondary,
+                    Enabled = true,
+                    OnClick = () => ToolsHubManager.ClosePage(PageOperationResult.Cancelled),
+                    MinWidth = 100
+                }
+            };
+            
+            var rightButtons = new List<UI.PageLayout.FooterButton>
+            {
+                new UI.PageLayout.FooterButton
+                {
+                    Label = "Import Script",
+                    Style = UI.PageLayout.FooterButtonStyle.Primary,
+                    Enabled = isValid,
+                    OnClick = () =>
+                    {
+                        var success = ImportScript(_outputPath, _namespace);
+                        ToolsHubManager.ClosePage(success ? PageOperationResult.Success : PageOperationResult.Failure);
+                    },
+                    MinWidth = 120
+                }
+            };
+            
+            UI.PageLayout.DrawFooterSplit(leftButtons, rightButtons);
+        }
+
+        private void DrawClassNameField()
+        {
             EditorGUILayout.BeginHorizontal();
             EditorGUILayout.LabelField("Class Name:", GUILayout.Width(80));
             var newClassName = EditorGUILayout.TextField(_className ?? "");
@@ -116,10 +177,10 @@ namespace Akira.UI
             }
 
             EditorGUILayout.EndHorizontal();
+        }
 
-            GUILayout.Space(5);
-
-            // Namespace field
+        private void DrawNamespaceField()
+        {
             EditorGUILayout.BeginHorizontal();
             EditorGUILayout.LabelField("Namespace:", GUILayout.Width(80));
             var newNamespace = EditorGUILayout.TextField(_namespace ?? "");
@@ -131,9 +192,10 @@ namespace Akira.UI
             }
 
             EditorGUILayout.EndHorizontal();
+        }
 
-            GUILayout.Space(5);
-
+        private void DrawAsmdefLocationField()
+        {
             // For asmdef files, add location dropdown
             if (_outputName.EndsWith(".asmdef"))
             {
@@ -153,8 +215,10 @@ namespace Akira.UI
 
                 GUILayout.Space(5);
             }
+        }
 
-            // Output path with browse button
+        private void DrawOutputPathField()
+        {
             EditorGUILayout.BeginHorizontal();
             EditorGUILayout.LabelField("Output Path:", GUILayout.Width(80));
 
@@ -204,7 +268,26 @@ namespace Akira.UI
             EditorGUILayout.EndHorizontal();
         }
 
-        public void DrawScrollContent()
+        private void DrawPageContent()
+        {
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.Space(8);
+            
+            EditorGUILayout.BeginVertical();
+            
+            _scrollPosition = EditorGUILayout.BeginScrollView(_scrollPosition);
+            
+            DrawScriptPreview();
+            
+            EditorGUILayout.EndScrollView();
+            
+            EditorGUILayout.EndVertical();
+            
+            GUILayout.Space(8);
+            EditorGUILayout.EndHorizontal();
+        }
+
+        private void DrawScriptPreview()
         {
             // Use SelectableLabel for read-only preview with scrolling
             var previewStyle = new GUIStyle(EditorStyles.label);
@@ -218,7 +301,23 @@ namespace Akira.UI
                 GUILayout.ExpandWidth(true), GUILayout.ExpandHeight(true));
         }
 
-        public void DrawContentFooter()
+        private void DrawPageFooter()
+        {
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.Space(8);
+            
+            EditorGUILayout.BeginVertical();
+            
+            DrawValidationWarnings();
+            DrawFooterActionButtons();
+            
+            EditorGUILayout.EndVertical();
+            
+            GUILayout.Space(8);
+            EditorGUILayout.EndHorizontal();
+        }
+
+        private void DrawValidationWarnings()
         {
             // Show warnings if needed
             if (string.IsNullOrEmpty(_className) || _className.Contains(" "))
@@ -248,54 +347,6 @@ namespace Akira.UI
                 EditorGUILayout.HelpBox("Output path should end with .cs or .asmdef extension.", MessageType.Warning);
         }
 
-        public void DrawFooter()
-        {
-            // Disable the button if validation fails
-            var isValidExtension = _outputPath.ToLower().EndsWith(".cs") || _outputPath.ToLower().EndsWith(".asmdef");
-            var isValid = !string.IsNullOrEmpty(_className) &&
-                          !string.IsNullOrEmpty(_outputPath) &&
-                          isValidExtension &&
-                          !_className.Contains(" ");
-
-            var left = new System.Collections.Generic.List<PageLayout.FooterButton>
-            {
-                new PageLayout.FooterButton
-                {
-                    Label = "Cancel",
-                    Style = PageLayout.FooterButtonStyle.Secondary,
-                    Enabled = true,
-                    OnClick = () => ToolsHubManager.ClosePage(PageOperationResult.Cancelled),
-                    MinWidth = 100
-                }
-            };
-
-            var right = new System.Collections.Generic.List<PageLayout.FooterButton>
-            {
-                new PageLayout.FooterButton
-                {
-                    Label = "Import Script",
-                    Style = PageLayout.FooterButtonStyle.Primary,
-                    Enabled = isValid,
-                    OnClick = () =>
-                    {
-                        if (isValid)
-                        {
-                            var success = ImportScript(_outputPath, _namespace);
-                            ToolsHubManager.ClosePage(success ? PageOperationResult.Success : PageOperationResult.Failure);
-                        }
-                        else
-                        {
-                            ToolsHubManager.ClosePage(PageOperationResult.Failure);
-                        }
-                    },
-                    MinWidth = 120
-                }
-            };
-
-            PageLayout.DrawFooterSplit(left, right);
-        }
-
-        // Update the OnPageResult to give more detailed information
         public void OnPageResult(PageOperationResult result)
         {
             if (result == PageOperationResult.Success)
@@ -476,7 +527,10 @@ namespace Akira.UI
         }
     }
 
-    public static class ScriptImportPage
+    /// <summary>
+    /// Static wrapper for script import page menu items
+    /// </summary>
+    public static class ScriptImportPageMenu
     {
         // Keep a reference to the current page implementation for state persistence
         private static ScriptImportPageImpl _currentPageImpl;

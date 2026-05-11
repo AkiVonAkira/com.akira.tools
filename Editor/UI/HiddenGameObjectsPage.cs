@@ -11,6 +11,7 @@ namespace Akira.UI
     {
         // Static state for ToolsHub page
         private readonly List<GameObject> _hiddenObjects = new();
+        private Vector2 _scrollPosition;
         private int _objectToRemoveIndex = -1;
         private bool _pendingObjectRemoval;
 
@@ -31,116 +32,109 @@ namespace Akira.UI
         public string Title => "Hidden GameObject Tools";
         public string Description => "View and manage objects hidden from the Hierarchy";
 
-        public void DrawContentHeader()
+        public void DrawHeader()
         {
-            // Action buttons
-            EditorGUILayout.BeginHorizontal();
-
-            // Removed page-local Refresh button; use header Refresh instead
-            if (GUILayout.Button("Create Hidden Object", GUILayout.Height(28)))
+            // Action buttons header - NO LAYOUT!
+            if (GUILayout.Button("Create Hidden Object", GUILayout.Height(28), GUILayout.Width(150)))
             {
                 var go = new GameObject("HiddenTestObject");
                 go.hideFlags = HideFlags.HideInHierarchy;
                 GatherHiddenObjects();
             }
+        }
 
-            EditorGUILayout.EndHorizontal();
-
-            GUILayout.Space(4);
+        public void DrawContent()
+        {
+            // Content - NO SCROLL VIEW, NO PADDING!
             EditorGUILayout.LabelField($"Hidden Objects ({_hiddenObjects.Count})", EditorStyles.boldLabel);
+            GUILayout.Space(4);
 
             // Reset pending removal flag
             _pendingObjectRemoval = false;
-        }
-
-        public void DrawScrollContent()
-        {
+            
             if (_hiddenObjects.Count == 0)
             {
-                // Don't create a scroll view at all when empty
                 EditorGUILayout.HelpBox("No hidden objects found in the current scene.", MessageType.Info);
-
-                return;
             }
-
-            // Only draw the scroll contents when we have items
-            for (var i = 0; i < _hiddenObjects.Count; i++)
+            else
             {
-                var hiddenObject = _hiddenObjects[i];
-                EditorGUILayout.BeginHorizontal();
-                var gone = hiddenObject == null;
-                GUILayout.Label(gone ? "null" : hiddenObject.name);
-                GUILayout.FlexibleSpace();
-
-                if (gone)
+                // Draw the list of hidden objects
+                for (var i = 0; i < _hiddenObjects.Count; i++)
                 {
-                    GUILayout.Box("Select", GUILayout.Width(80));
-                    GUILayout.Box("Reveal", GUILayout.Width(80));
-                    GUILayout.Box("Delete", GUILayout.Width(80));
-                }
-                else
-                {
-                    if (GUILayout.Button("Select", GUILayout.Width(80)))
-                        Selection.activeGameObject = hiddenObject;
+                    var hiddenObject = _hiddenObjects[i];
+                    EditorGUILayout.BeginHorizontal();
+                    var gone = hiddenObject == null;
+                    GUILayout.Label(gone ? "null" : hiddenObject.name);
+                    GUILayout.FlexibleSpace();
 
-                    if (GUILayout.Button(IsHidden(hiddenObject) ? "Reveal" : "Hide", GUILayout.Width(80)))
+                    if (gone)
                     {
-                        hiddenObject.hideFlags ^= HideFlags.HideInHierarchy;
-                        EditorSceneManager.MarkSceneDirty(hiddenObject.scene);
+                        GUILayout.Box("Select", GUILayout.Width(80));
+                        GUILayout.Box("Reveal", GUILayout.Width(80));
+                        GUILayout.Box("Delete", GUILayout.Width(80));
+                    }
+                    else
+                    {
+                        if (GUILayout.Button("Select", GUILayout.Width(80)))
+                            Selection.activeGameObject = hiddenObject;
+
+                        if (GUILayout.Button(IsHidden(hiddenObject) ? "Reveal" : "Hide", GUILayout.Width(80)))
+                        {
+                            hiddenObject.hideFlags ^= HideFlags.HideInHierarchy;
+                            EditorSceneManager.MarkSceneDirty(hiddenObject.scene);
+                        }
+
+                        // Queue object for deletion rather than deleting immediately
+                        if (GUILayout.Button("Delete", GUILayout.Width(80)))
+                        {
+                            _pendingObjectRemoval = true;
+                            _objectToRemoveIndex = i;
+                        }
                     }
 
-                    // Queue object for deletion rather than deleting immediately
-                    if (GUILayout.Button("Delete", GUILayout.Width(80)))
-                    {
-                        _pendingObjectRemoval = true;
-                        _objectToRemoveIndex = i;
-                    }
+                    EditorGUILayout.EndHorizontal();
+                    GUILayout.Space(2);
                 }
 
-                EditorGUILayout.EndHorizontal();
-                GUILayout.Space(2);
-            }
-
-            // Handle any pending object removals after drawing is complete
-            if (_pendingObjectRemoval && _objectToRemoveIndex >= 0 && _objectToRemoveIndex < _hiddenObjects.Count)
-            {
-                var hiddenObject = _hiddenObjects[_objectToRemoveIndex];
-
-                if (hiddenObject != null)
+                // Handle any pending object removals after drawing is complete
+                if (_pendingObjectRemoval && _objectToRemoveIndex >= 0 && _objectToRemoveIndex < _hiddenObjects.Count)
                 {
-                    var scene = hiddenObject.scene;
-                    Object.DestroyImmediate(hiddenObject);
-                    EditorSceneManager.MarkSceneDirty(scene);
-                }
+                    var hiddenObject = _hiddenObjects[_objectToRemoveIndex];
 
-                GatherHiddenObjects();
-                _pendingObjectRemoval = false;
-                _objectToRemoveIndex = -1;
+                    if (hiddenObject != null)
+                    {
+                        var scene = hiddenObject.scene;
+                        Object.DestroyImmediate(hiddenObject);
+                        EditorSceneManager.MarkSceneDirty(scene);
+                    }
+
+                    GatherHiddenObjects();
+                    _pendingObjectRemoval = false;
+                    _objectToRemoveIndex = -1;
+                }
             }
         }
 
         public void DrawContentFooter()
         {
+            // Empty - no content footer needed for this page
         }
 
         public void DrawFooter()
         {
-            var left = new List<PageLayout.FooterButton>
+            var leftButtons = new List<UI.PageLayout.FooterButton>
             {
-                new PageLayout.FooterButton
+                new UI.PageLayout.FooterButton
                 {
                     Label = "Close",
-                    Style = PageLayout.FooterButtonStyle.Secondary,
+                    Style = UI.PageLayout.FooterButtonStyle.Secondary,
                     Enabled = true,
                     OnClick = () => ToolsHubManager.ClosePage(PageOperationResult.Cancelled),
                     MinWidth = 100
                 }
             };
-
-            // No right-side actions for this page
-            var right = new List<PageLayout.FooterButton>();
-
-            PageLayout.DrawFooterSplit(left, right);
+            
+            UI.PageLayout.DrawFooterSplit(leftButtons, null);
         }
 
         public void OnPageResult(PageOperationResult result)
@@ -189,12 +183,12 @@ namespace Akira.UI
             if (_currentPageImpl != null)
             {
                 _currentPageImpl.BindRefreshHook();
-                _currentPageImpl.DrawPage();
+                _currentPageImpl.DrawPage(); // Extension method
             }
             else
             {
                 _currentPageImpl = new HiddenGameObjectsPageImpl();
-                _currentPageImpl.DrawPage();
+                _currentPageImpl.DrawPage(); // Extension method
             }
         }
 
