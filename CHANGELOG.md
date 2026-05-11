@@ -1,3 +1,10 @@
+# [1.12.0](https://github.com/AkiVonAkira/com.akira.tools/compare/v1.11.0...v1.12.0) (2026-05-11)
+
+
+### Features
+
+* error handling and tests ([509378f](https://github.com/AkiVonAkira/com.akira.tools/commit/509378f166ad8c25d08ffdfedaee018db176b4c6))
+
 # [1.11.0](https://github.com/AkiVonAkira/com.akira.tools/compare/v1.10.0...v1.11.0) (2025-09-05)
 
 
